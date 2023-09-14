@@ -7,15 +7,18 @@ import com.sedmelluq.discord.lavaplayer.tools.FriendlyException
 import com.sedmelluq.discord.lavaplayer.track.AudioPlaylist
 import com.sedmelluq.discord.lavaplayer.track.AudioTrack
 import com.sedmelluq.discord.lavaplayer.track.AudioTrackEndReason
+import discord4j.core.event.domain.message.MessageCreateEvent
+import reactor.core.publisher.Mono
 import java.util.concurrent.BlockingQueue
 import java.util.concurrent.LinkedBlockingQueue
 
 
-class TrackScheduler(private val player: AudioPlayer) :
+class TrackScheduler(private val player: AudioPlayer, val sendInfo: (MessageCreateEvent, AudioTrack) -> Mono<Void>) :
     AudioLoadResultHandler, AudioEventAdapter() {
     private var queue: BlockingQueue<AudioTrack> = LinkedBlockingQueue()
     var loop: Boolean = false
-    private var currentTrack: AudioTrack? = null
+    var currentTrack: AudioTrack? = null
+    var currentEvent: MessageCreateEvent? = null
 
     override fun trackLoaded(track: AudioTrack?) {
         track?.let {
@@ -24,6 +27,7 @@ class TrackScheduler(private val player: AudioPlayer) :
             } else if (!queue.contains(it)) {
                 queue.offer(it)
             }
+            currentEvent?.let { event -> sendInfo(event, track).subscribe() }
         }
     }
 
@@ -52,7 +56,9 @@ class TrackScheduler(private val player: AudioPlayer) :
     fun nextTrack() {
         if (!loop) {
             currentTrack = queue.poll()
-            currentTrack?.let { player.startTrack(it, false) }
+            currentTrack?.let { track ->
+                player.startTrack(track, false)
+            }
         } else {
             currentTrack?.let { player.startTrack(it.makeClone(), false) }
         }

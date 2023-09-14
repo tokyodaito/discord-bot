@@ -15,6 +15,7 @@ import music.LavaPlayerAudioProvider
 import music.TrackScheduler
 import reactor.core.publisher.Flux
 import reactor.core.publisher.Mono
+import java.util.concurrent.TimeUnit
 
 
 class Bot(id: String) {
@@ -30,7 +31,9 @@ class Bot(id: String) {
     var provider: AudioProvider = LavaPlayerAudioProvider(player)
 
     private val commands: MutableMap<String, Command> = HashMap()
-    private val scheduler = TrackScheduler(player)
+    private val scheduler = TrackScheduler(player) { messageCreateEvent, audioTrack ->
+        sendEmbedMessage(messageCreateEvent, audioTrack)
+    }
 
     init {
         initCommands()
@@ -55,6 +58,7 @@ class Bot(id: String) {
 
         commands["play"] = object : Command {
             override fun execute(event: MessageCreateEvent?): Mono<Void?>? {
+                scheduler.currentEvent = event
                 return Mono.justOrEmpty(event?.member)
                     .flatMap { it.voiceState }
                     .flatMap { it.channel }
@@ -116,6 +120,12 @@ class Bot(id: String) {
             }
         }
 
+        commands["ват"] = object : Command {
+            override fun execute(event: MessageCreateEvent?): Mono<Void?>? {
+                return event?.let { scheduler.currentTrack?.let { it1 -> sendEmbedMessage(it, it1).then() } }
+            }
+        }
+
         commands["shuffle"] = object : Command {
             override fun execute(event: MessageCreateEvent?): Mono<Void?>? {
                 return event?.let { sendMessage(it, "Очередь перемешана") }?.let {
@@ -168,22 +178,21 @@ class Bot(id: String) {
             })
     }
 
-    private fun sendEmbedMessage(event: MessageCreateEvent?, track: AudioTrack?): Mono<Void>? {
-        return event?.let {
-            it.message.channel
-                .flatMap { channel ->
-                    channel.createEmbed { embedCreateSpec ->
-                        embedCreateSpec.setTitle("Играющий трек")
-                        if (track != null) {
-                            embedCreateSpec.setDescription("${track.info.title} - ${track.info.author}")
-                            embedCreateSpec.setThumbnail(track.info.artworkUrl)
-                            embedCreateSpec.setFooter("Трек длиной: ${track.duration} мс", null)
-                        }
-                    }
+    private fun sendEmbedMessage(event: MessageCreateEvent, track: AudioTrack): Mono<Void> {
+        return event.message.channel
+            .flatMap { channel ->
+                channel.createEmbed { embedCreateSpec ->
+                    embedCreateSpec.setTitle("Играющий трек")
+                    embedCreateSpec.setDescription("[${track.info.title}](https://www.youtube.com/watch?v=${track.info.identifier}) - ${track.info.author}")
+                    embedCreateSpec.setThumbnail(track.info.artworkUrl)
+                    val minutes = TimeUnit.MILLISECONDS.toMinutes(track.duration)
+                    val seconds = TimeUnit.MILLISECONDS.toSeconds(track.duration) % 60
+                    embedCreateSpec.setFooter("Трек длиной: $minutes минут $seconds секунд", null)
                 }
-                .then()
-        }
+            }
+            .then()
     }
+
 
     private fun setEventObserver(client: GatewayDiscordClient) {
         client.eventDispatcher.on(MessageCreateEvent::class.java)
