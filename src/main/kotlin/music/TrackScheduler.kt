@@ -15,7 +15,7 @@ import java.util.concurrent.LinkedBlockingQueue
 
 class TrackScheduler(
     private val player: AudioPlayer,
-    val sendInfo: (MessageCreateEvent, AudioTrack, Boolean) -> Mono<Void>
+    val sendInfo: (MessageCreateEvent, AudioTrack, Boolean, Boolean) -> Mono<Void>
 ) :
     AudioLoadResultHandler, AudioEventAdapter() {
     private var queue: BlockingQueue<AudioTrack> = LinkedBlockingQueue()
@@ -27,10 +27,13 @@ class TrackScheduler(
         track?.let {
             if (player.startTrack(it, true)) {
                 currentTrack = it
+                currentEvent?.let { event -> sendInfo(event, track, loop, false).subscribe() }
             } else if (!queue.contains(it)) {
                 queue.offer(it)
+                currentEvent?.let { event -> sendInfo(event, track, loop, true).subscribe() }
+            } else {
+                println("WTF?")
             }
-            currentEvent?.let { event -> sendInfo(event, track, loop).subscribe() }
         }
     }
 
@@ -57,10 +60,11 @@ class TrackScheduler(
     }
 
     fun nextTrack() {
-        if (!loop) {
+        if (loop) {
             currentTrack = queue.poll()
             currentTrack?.let { track ->
                 player.startTrack(track, false)
+                currentEvent?.let { event -> sendInfo(event, track, loop, false).subscribe() }
             }
         } else {
             currentTrack?.let { player.startTrack(it.makeClone(), false) }

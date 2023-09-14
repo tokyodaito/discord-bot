@@ -10,11 +10,14 @@ import com.sedmelluq.discord.lavaplayer.track.playback.NonAllocatingAudioFrameBu
 import discord4j.core.DiscordClientBuilder
 import discord4j.core.GatewayDiscordClient
 import discord4j.core.event.domain.message.MessageCreateEvent
+import discord4j.core.event.domain.message.ReactionAddEvent
+import discord4j.core.`object`.reaction.ReactionEmoji
 import discord4j.voice.AudioProvider
 import music.LavaPlayerAudioProvider
 import music.TrackScheduler
 import reactor.core.publisher.Flux
 import reactor.core.publisher.Mono
+import java.lang.Integer.min
 import java.util.concurrent.TimeUnit
 
 
@@ -31,8 +34,8 @@ class Bot(id: String) {
     var provider: AudioProvider = LavaPlayerAudioProvider(player)
 
     private val commands: MutableMap<String, Command> = HashMap()
-    private val scheduler = TrackScheduler(player) { messageCreateEvent, audioTrack, loop ->
-        sendEmbedMessage(messageCreateEvent, audioTrack, loop)
+    private val scheduler = TrackScheduler(player) { messageCreateEvent, audioTrack, loop, stayInQueue ->
+        sendEmbedMessage(messageCreateEvent, audioTrack, loop, stayInQueue)
     }
 
     init {
@@ -127,7 +130,8 @@ class Bot(id: String) {
                         sendEmbedMessage(
                             it,
                             it1,
-                            scheduler.loop
+                            scheduler.loop,
+                            false
                         ).then()
                     }
                 }
@@ -143,7 +147,7 @@ class Bot(id: String) {
                         else
                             sendMessage(event, "Повтор выключен")
                     ).then(
-                        sendEmbedMessage(event, scheduler.currentTrack!!, scheduler.loop)
+                        sendEmbedMessage(event, scheduler.currentTrack!!, scheduler.loop, false)
                     )
                 } else {
                     Mono.empty()
@@ -170,45 +174,76 @@ class Bot(id: String) {
     }
 
     private fun showTrackList(event: MessageCreateEvent): Mono<Void> {
-        val maxMessageLength = 2000
-        val prefix = "Список песен:\n"
-        val messageBuilder = StringBuilder().append(prefix)
-        println("Количество песен в очереди: ${scheduler.getFullTrackList().size}")
+        val tracks = scheduler.getFullTrackList()
+        val tracksPerPage = 10
+        val totalPages = (tracks.size + tracksPerPage - 1) / tracksPerPage
+        var currentPage = 0
 
-        return Flux.fromIterable(scheduler.getFullTrackList())
-            .index()
-            .flatMap { indexedTrack ->
-                val index = indexedTrack.t1
-                val track = indexedTrack.t2
-                val trackInfo = "${index + 1}. ${track.info.title}\n"
-                if (messageBuilder.length + trackInfo.length < maxMessageLength) {
-                    messageBuilder.append(trackInfo)
-                    Mono.empty<Void>()
-                } else {
-                    val messageToSend = messageBuilder.toString()
-                    messageBuilder.clear()
-                    messageBuilder.append(trackInfo)
-                    sendMessage(event, messageToSend)
-                }
-            }
-            .onErrorResume {
-                println("Ошибка: ${it.message}")
-                Mono.empty<Void>()
-            }
-            .then(Mono.defer {
-                if (messageBuilder.isNotEmpty()) {
-                    sendMessage(event, messageBuilder.toString())
-                } else {
-                    Mono.empty<Void>()
-                }
-            })
-    }
+        fun formatTrackListPage(page: Int): String {
+            val startIndex = page * tracksPerPage
+            val endIndex = min(startIndex + tracksPerPage, tracks.size)
+            return tracks.subList(startIndex, endIndex).mapIndexed { index, track ->
+                "${startIndex + index + 1}. ${track.info.title}"
+            }.joinToString("\n")
+        }
 
-    private fun sendEmbedMessage(event: MessageCreateEvent, track: AudioTrack, loop: Boolean): Mono<Void> {
         return event.message.channel
             .flatMap { channel ->
                 channel.createEmbed { embedCreateSpec ->
-                    embedCreateSpec.setTitle("Играющий трек")
+                    embedCreateSpec.setTitle("Список песен (Страница ${currentPage + 1} из $totalPages)")
+                    embedCreateSpec.setDescription(formatTrackListPage(currentPage))
+                }.flatMap { message ->
+                    if (totalPages > 1) {
+                        message.addReaction(ReactionEmoji.unicode("⬅"))
+                            .then(message.addReaction(ReactionEmoji.unicode("➡")))
+                            .then(
+                                message.client.eventDispatcher.on(ReactionAddEvent::class.java)
+                                    .filter { it.messageId == message.id }
+                                    .filter { it.userId == event.message.author.get().id }
+                                    .filter { it.emoji.asUnicodeEmoji().isPresent }
+                                    .take(totalPages.toLong())
+                                    .flatMap { reactionEvent ->
+                                        when (reactionEvent.emoji.asUnicodeEmoji().get()) {
+                                            ReactionEmoji.unicode("⬅") -> {
+                                                if (currentPage > 0) {
+                                                    currentPage--
+                                                }
+                                            }
+
+                                            ReactionEmoji.unicode("➡") -> {
+                                                if (currentPage < totalPages - 1) {
+                                                    currentPage++
+                                                }
+                                            }
+                                        }
+                                        message.edit { spec ->
+                                            spec.setEmbed { embedCreateSpec ->
+                                                embedCreateSpec.setTitle("Список песен (Страница ${currentPage + 1} из $totalPages)")
+                                                embedCreateSpec.setDescription(formatTrackListPage(currentPage))
+                                            }
+                                        }.then(Mono.empty<Void>())
+                                    }
+                                    .then()
+                            )
+                    } else {
+                        Mono.empty<Void>()
+                    }
+                }
+            }
+    }
+
+
+    private fun sendEmbedMessage(
+        event: MessageCreateEvent,
+        track: AudioTrack,
+        loop: Boolean,
+        stayInQueueStatus: Boolean
+    ): Mono<Void> {
+        return event.message.channel
+            .flatMap { channel ->
+                channel.createEmbed { embedCreateSpec ->
+                    val stayInQueue = if (stayInQueueStatus) "Поставлено в очередь" else "Играющий трек"
+                    embedCreateSpec.setTitle(stayInQueue)
                     embedCreateSpec.setDescription("[${track.info.title}](https://www.youtube.com/watch?v=${track.info.identifier}) - ${track.info.author}")
                     embedCreateSpec.setThumbnail(track.info.artworkUrl)
                     val minutes = TimeUnit.MILLISECONDS.toMinutes(track.duration)
