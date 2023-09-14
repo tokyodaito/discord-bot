@@ -9,8 +9,10 @@ import com.sedmelluq.discord.lavaplayer.track.playback.AudioFrameBufferFactory
 import com.sedmelluq.discord.lavaplayer.track.playback.NonAllocatingAudioFrameBuffer
 import discord4j.core.DiscordClientBuilder
 import discord4j.core.GatewayDiscordClient
+import discord4j.core.event.domain.VoiceStateUpdateEvent
 import discord4j.core.event.domain.message.MessageCreateEvent
 import discord4j.core.event.domain.message.ReactionAddEvent
+import discord4j.core.`object`.entity.channel.VoiceChannel
 import discord4j.core.`object`.reaction.ReactionEmoji
 import discord4j.voice.AudioProvider
 import music.LavaPlayerAudioProvider
@@ -30,12 +32,14 @@ class Bot(id: String) {
         AudioSourceManagers.registerRemoteSources(this)
     }
 
+    private lateinit var clientGeneral: GatewayDiscordClient
+
     private val player: AudioPlayer = playerManager.createPlayer()
     var provider: AudioProvider = LavaPlayerAudioProvider(player)
 
     private val commands: MutableMap<String, Command> = HashMap()
-    private val scheduler = TrackScheduler(player) { messageCreateEvent, audioTrack, loop, stayInQueue ->
-        sendEmbedMessage(messageCreateEvent, audioTrack, loop, stayInQueue)
+    private val scheduler = TrackScheduler(player) { messageCreateEvent, audioTrack, loop, stayInQueue, loopPlaylist ->
+        sendEmbedMessage(messageCreateEvent, audioTrack, loop, stayInQueue, loopPlaylist)
     }
 
     init {
@@ -46,10 +50,11 @@ class Bot(id: String) {
 
         if (client != null) {
             setEventObserver(client)
+            clientGeneral = client
             println("Bot init!")
         }
 
-        client?.onDisconnect()?.block();
+        client?.onDisconnect()?.block()
     }
 
     private fun initCommands() {
@@ -89,21 +94,7 @@ class Bot(id: String) {
 
         commands["stop"] = object : Command {
             override fun execute(event: MessageCreateEvent?): Mono<Void?>? {
-                return event?.let { sendMessage(it, "Воспроизведение остановлено") }?.let {
-                    Mono.justOrEmpty(event.member.orElse(null))
-                        .flatMap { member ->
-                            Mono.justOrEmpty(member?.voiceState?.block())
-                                .flatMap { voiceState ->
-                                    Mono.justOrEmpty(voiceState?.channel?.block())
-                                        .doOnNext { channel ->
-                                            channel?.sendDisconnectVoiceState()?.block().let { scheduler.clearQueue() }
-                                        }
-                                }
-                        }
-                        .then(
-                            it
-                        )
-                }
+                return event?.let { stopPlaying(it) }
             }
         }
 
@@ -130,8 +121,9 @@ class Bot(id: String) {
                         sendEmbedMessage(
                             it,
                             it1,
-                            scheduler.loop,
-                            false
+                            loop = false,
+                            loopPlaylist = false,
+                            stayInQueueStatus = scheduler.loop
                         ).then()
                     }
                 }
@@ -141,19 +133,26 @@ class Bot(id: String) {
         commands["loop"] = object : Command {
             override fun execute(event: MessageCreateEvent?): Mono<Void?>? {
                 return if (scheduler.currentTrack != null && event != null) {
-                    Mono.fromCallable { scheduler.loop = !scheduler.loop }.then(
-                        if (scheduler.loop)
-                            sendMessage(event, "Повтор включен")
-                        else
-                            sendMessage(event, "Повтор выключен")
-                    ).then(
-                        sendEmbedMessage(event, scheduler.currentTrack!!, scheduler.loop, false)
-                    )
+                    Mono.fromCallable { scheduler.loop = !scheduler.loop }
+                        .flatMap {
+                            if (scheduler.loop)
+                                sendMessage(event, "Повтор включен")
+                            else
+                                sendMessage(event, "Повтор выключен")
+                        }
+                        .then(
+                            sendEmbedMessage(
+                                event, scheduler.currentTrack!!, scheduler.loop,
+                                loopPlaylist = false,
+                                stayInQueueStatus = false
+                            )
+                        )
                 } else {
                     Mono.empty()
                 }
             }
         }
+
 
 
         commands["shuffle"] = object : Command {
@@ -165,12 +164,71 @@ class Bot(id: String) {
                 }
             }
         }
+
+        commands["playlistloop"] = object : Command {
+            override fun execute(event: MessageCreateEvent?): Mono<Void?>? {
+                return if (event != null) {
+                    Mono.fromCallable { scheduler.playlistLoop = !scheduler.playlistLoop }
+                        .flatMap {
+                            if (scheduler.playlistLoop)
+                                sendMessage(event, "Циклический повтор плейлиста включен")
+                            else
+                                sendMessage(event, "Циклический повтор плейлиста выключен")
+                        }
+                } else {
+                    Mono.empty()
+                }
+            }
+        }
+
+        commands["jump"] = object : Command {
+            override fun execute(event: MessageCreateEvent?): Mono<Void?>? {
+                return if (event != null) {
+                    val args = event.message.content.split(" ")
+                    if (args.size > 1) {
+                        val index = args[1].toIntOrNull()
+                        if (index != null && index > 0 && index <= scheduler.getFullTrackList().size) {
+                            val track = scheduler.getFullTrackList()[index - 1]
+                            scheduler.currentTrack = track
+                            scheduler.player.startTrack(track, false)
+                            sendMessage(event, "Перешёл к треку с индексом $index").then(
+                                sendEmbedMessage(event, track, scheduler.loop, scheduler.playlistLoop, false)
+                            )
+                        } else {
+                            sendMessage(event, "Неверный индекс")
+                        }
+                    } else {
+                        sendMessage(event, "Укажите индекс трека")
+                    }
+                } else {
+                    Mono.empty()
+                }
+            }
+        }
+
+
     }
 
     private fun sendMessage(event: MessageCreateEvent, message: String): Mono<Void?> {
         return event.message.channel
             .flatMap { channel -> channel.createMessage(message) }
             .then()
+    }
+
+    private fun stopPlaying(event: MessageCreateEvent): Mono<Void?> {
+        return Mono.justOrEmpty(event.member.orElse(null))
+            .flatMap { member ->
+                Mono.justOrEmpty(member?.voiceState?.block())
+                    .flatMap { voiceState ->
+                        Mono.justOrEmpty(voiceState?.channel?.block())
+                            .doOnNext { channel ->
+                                channel?.sendDisconnectVoiceState()?.block().let { scheduler.clearQueue() }
+                            }
+                    }
+            }
+            .then(
+                sendMessage(event, "Воспроизведение остановлено")
+            )
     }
 
     private fun showTrackList(event: MessageCreateEvent): Mono<Void> {
@@ -226,7 +284,7 @@ class Bot(id: String) {
                                     .then()
                             )
                     } else {
-                        Mono.empty<Void>()
+                        Mono.empty()
                     }
                 }
             }
@@ -237,6 +295,7 @@ class Bot(id: String) {
         event: MessageCreateEvent,
         track: AudioTrack,
         loop: Boolean,
+        loopPlaylist: Boolean,
         stayInQueueStatus: Boolean
     ): Mono<Void> {
         return event.message.channel
@@ -249,7 +308,11 @@ class Bot(id: String) {
                     val minutes = TimeUnit.MILLISECONDS.toMinutes(track.duration)
                     val seconds = TimeUnit.MILLISECONDS.toSeconds(track.duration) % 60
                     val loopStatus = if (loop) "Повтор включен" else ""
-                    embedCreateSpec.setFooter("Трек длиной: $minutes минут $seconds секунд \n $loopStatus", null)
+                    val loopPlaylistStatus = if (loopPlaylist) "Повтор плейлиста включен" else ""
+                    embedCreateSpec.setFooter(
+                        "Трек длиной: $minutes минут $seconds секунд \n $loopStatus \n $loopPlaylistStatus",
+                        null
+                    )
                 }
             }
             .then()
@@ -257,16 +320,61 @@ class Bot(id: String) {
 
 
     private fun setEventObserver(client: GatewayDiscordClient) {
+        observeMessageEvents(client)
+    }
+
+    private fun observeMessageEvents(client: GatewayDiscordClient) {
         client.eventDispatcher.on(MessageCreateEvent::class.java)
             .flatMap { event ->
                 Mono.just(event.message.content)
                     .flatMap { content ->
                         Flux.fromIterable(commands.entries)
-                            .filter { entry -> content.startsWith('!' + entry.key) }
+                            .filter { entry -> content.startsWith('!' + entry.key, ignoreCase = true) }
                             .flatMap { entry -> entry.value.execute(event) }
                             .next()
                     }
             }
             .subscribe()
     }
+
+
+    private fun observeVoiceChannelEvents(client: GatewayDiscordClient) {
+        client.eventDispatcher.on(VoiceStateUpdateEvent::class.java)
+            .doOnNext { println("VoiceStateUpdateEvent triggered") } // Log when an event is triggered
+            .flatMap { event ->
+                val currentChannel = event.current.channelId.orElse(null)
+                val oldChannel = event.old.orElse(null)?.channelId?.orElse(null)
+                println("Current Channel: $currentChannel, Old Channel: $oldChannel") // Log channel IDs
+
+                if (currentChannel != null && currentChannel != oldChannel) {
+                    event.current.guild.flatMap { guild ->
+                        guild.voiceStates.collectList().flatMap { voiceStates ->
+                            val botId = client.selfId.asLong()
+                            val usersInChannel = voiceStates.filter { it.channelId.orElse(null) == currentChannel }
+                                .map { it.userId.asLong() }
+
+                            println("Users in channel: $usersInChannel") // Log users in the channel
+
+                            if (usersInChannel.size == 1 && usersInChannel.contains(botId)) {
+                                guild.getChannelById(currentChannel).ofType(VoiceChannel::class.java)
+                                    .flatMap { it.voiceConnection }
+                                    .flatMap {
+                                        println("Disconnecting...") // Log before disconnecting
+                                        it.disconnect().doOnTerminate {
+                                            println("Disconnected, clearing queue") // Log after disconnecting
+                                            scheduler.clearQueue()
+                                        }
+                                    }
+                            } else {
+                                Mono.empty()
+                            }
+                        }
+                    }
+                } else {
+                    Mono.empty()
+                }
+            }
+            .subscribe()
+    }
+
 }

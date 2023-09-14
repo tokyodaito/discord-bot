@@ -14,8 +14,8 @@ import java.util.concurrent.LinkedBlockingQueue
 
 
 class TrackScheduler(
-    private val player: AudioPlayer,
-    val sendInfo: (MessageCreateEvent, AudioTrack, Boolean, Boolean) -> Mono<Void>
+    internal val player: AudioPlayer,
+    val sendInfo: (MessageCreateEvent, AudioTrack, Boolean, Boolean, Boolean) -> Mono<Void>
 ) :
     AudioLoadResultHandler, AudioEventAdapter() {
     private var queue: BlockingQueue<AudioTrack> = LinkedBlockingQueue()
@@ -23,14 +23,17 @@ class TrackScheduler(
     var currentTrack: AudioTrack? = null
     var currentEvent: MessageCreateEvent? = null
 
+    var playlistLoop: Boolean = false
+    private var initialPlaylist: List<AudioTrack> = listOf()
+
     override fun trackLoaded(track: AudioTrack?) {
         track?.let {
             if (player.startTrack(it, true)) {
                 currentTrack = it
-                currentEvent?.let { event -> sendInfo(event, track, loop, false).subscribe() }
+                currentEvent?.let { event -> sendInfo(event, track, loop, playlistLoop, false).subscribe() }
             } else if (!queue.contains(it)) {
                 queue.offer(it)
-                currentEvent?.let { event -> sendInfo(event, track, loop, true).subscribe() }
+                currentEvent?.let { event -> sendInfo(event, track, loop, playlistLoop, true).subscribe() }
             } else {
                 println("WTF?")
             }
@@ -38,7 +41,10 @@ class TrackScheduler(
     }
 
     override fun playlistLoaded(playlist: AudioPlaylist?) {
-        playlist?.tracks?.let { queue.addAll(it) }
+        playlist?.tracks?.let {
+            queue.addAll(it)
+            initialPlaylist = it.toList()
+        }
         if (currentTrack == null)
             nextTrack()
     }
@@ -60,14 +66,21 @@ class TrackScheduler(
     }
 
     fun nextTrack() {
-        if (loop) {
+        if (playlistLoop && queue.isEmpty()) {
+            queue.addAll(initialPlaylist)
+        }
+
+        if (!loop) {
             currentTrack = queue.poll()
             currentTrack?.let { track ->
                 player.startTrack(track, false)
-                currentEvent?.let { event -> sendInfo(event, track, loop, false).subscribe() }
+                currentEvent?.let { event -> sendInfo(event, track, loop, playlistLoop, false).subscribe() }
             }
         } else {
-            currentTrack?.let { player.startTrack(it.makeClone(), false) }
+            currentTrack?.let { track ->
+                player.startTrack(track.makeClone(), false)
+                currentEvent?.let { event -> sendInfo(event, track, loop, playlistLoop, false).subscribe() }
+            }
         }
     }
 
