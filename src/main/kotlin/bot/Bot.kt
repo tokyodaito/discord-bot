@@ -31,8 +31,8 @@ class Bot(id: String) {
     var provider: AudioProvider = LavaPlayerAudioProvider(player)
 
     private val commands: MutableMap<String, Command> = HashMap()
-    private val scheduler = TrackScheduler(player) { messageCreateEvent, audioTrack ->
-        sendEmbedMessage(messageCreateEvent, audioTrack)
+    private val scheduler = TrackScheduler(player) { messageCreateEvent, audioTrack, loop ->
+        sendEmbedMessage(messageCreateEvent, audioTrack, loop)
     }
 
     init {
@@ -120,11 +120,37 @@ class Bot(id: String) {
             }
         }
 
-        commands["ват"] = object : Command {
+        commands["what"] = object : Command {
             override fun execute(event: MessageCreateEvent?): Mono<Void?>? {
-                return event?.let { scheduler.currentTrack?.let { it1 -> sendEmbedMessage(it, it1).then() } }
+                return event?.let {
+                    scheduler.currentTrack?.let { it1 ->
+                        sendEmbedMessage(
+                            it,
+                            it1,
+                            scheduler.loop
+                        ).then()
+                    }
+                }
             }
         }
+
+        commands["loop"] = object : Command {
+            override fun execute(event: MessageCreateEvent?): Mono<Void?>? {
+                return if (scheduler.currentTrack != null && event != null) {
+                    Mono.fromCallable { scheduler.loop = !scheduler.loop }.then(
+                        if (scheduler.loop)
+                            sendMessage(event, "Повтор включен")
+                        else
+                            sendMessage(event, "Повтор выключен")
+                    ).then(
+                        sendEmbedMessage(event, scheduler.currentTrack!!, scheduler.loop)
+                    )
+                } else {
+                    Mono.empty()
+                }
+            }
+        }
+
 
         commands["shuffle"] = object : Command {
             override fun execute(event: MessageCreateEvent?): Mono<Void?>? {
@@ -178,7 +204,7 @@ class Bot(id: String) {
             })
     }
 
-    private fun sendEmbedMessage(event: MessageCreateEvent, track: AudioTrack): Mono<Void> {
+    private fun sendEmbedMessage(event: MessageCreateEvent, track: AudioTrack, loop: Boolean): Mono<Void> {
         return event.message.channel
             .flatMap { channel ->
                 channel.createEmbed { embedCreateSpec ->
@@ -187,7 +213,8 @@ class Bot(id: String) {
                     embedCreateSpec.setThumbnail(track.info.artworkUrl)
                     val minutes = TimeUnit.MILLISECONDS.toMinutes(track.duration)
                     val seconds = TimeUnit.MILLISECONDS.toSeconds(track.duration) % 60
-                    embedCreateSpec.setFooter("Трек длиной: $minutes минут $seconds секунд", null)
+                    val loopStatus = if (loop) "Повтор включен" else ""
+                    embedCreateSpec.setFooter("Трек длиной: $minutes минут $seconds секунд \n $loopStatus", null)
                 }
             }
             .then()
