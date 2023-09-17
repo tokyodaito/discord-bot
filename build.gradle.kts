@@ -22,6 +22,7 @@ dependencies {
     implementation("dev.arbjerg:lavaplayer:2.0.1")
     implementation("org.slf4j:slf4j-api:2.0.5")
     implementation("ch.qos.logback:logback-classic:1.4.7")
+    implementation("com.google.code.gson:gson:2.8.8")
 }
 
 tasks.test {

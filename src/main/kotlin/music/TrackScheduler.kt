@@ -8,34 +8,53 @@ import com.sedmelluq.discord.lavaplayer.track.AudioPlaylist
 import com.sedmelluq.discord.lavaplayer.track.AudioTrack
 import com.sedmelluq.discord.lavaplayer.track.AudioTrackEndReason
 import discord4j.core.event.domain.message.MessageCreateEvent
+import discord4j.core.`object`.entity.Message
 import reactor.core.publisher.Mono
 import java.util.concurrent.BlockingQueue
 import java.util.concurrent.LinkedBlockingQueue
 
-
 class TrackScheduler(
     internal val player: AudioPlayer,
     val sendInfo: (MessageCreateEvent, AudioTrack, Boolean, Boolean, Boolean) -> Mono<Void>
-) :
-    AudioLoadResultHandler, AudioEventAdapter() {
+) : AudioLoadResultHandler, AudioEventAdapter() {
+
     private var queue: BlockingQueue<AudioTrack> = LinkedBlockingQueue()
+
+    @Volatile
     var loop: Boolean = false
+
+    @Volatile
     var currentTrack: AudioTrack? = null
+
     var currentEvent: MessageCreateEvent? = null
 
+    @Volatile
+    private var firstSong = true
+
+    @Volatile
     var playlistLoop: Boolean = false
+
+    @Volatile
+    var lastMessage: Message? = null
+
     private var initialPlaylist: List<AudioTrack> = listOf()
 
     override fun trackLoaded(track: AudioTrack?) {
         track?.let {
             if (player.startTrack(it, true)) {
                 currentTrack = it
-                currentEvent?.let { event -> sendInfo(event, track, loop, playlistLoop, false).subscribe() }
+                if (firstSong) {
+                    currentEvent?.let { event ->
+                        sendInfo(event, track, loop, playlistLoop, false).subscribe()
+                    } ?: println("Current event is null")
+                } else {
+                    print("WTF??")
+                }
             } else if (!queue.contains(it)) {
                 queue.offer(it)
                 currentEvent?.let { event -> sendInfo(event, track, loop, playlistLoop, true).subscribe() }
             } else {
-                println("WTF?")
+                println("Track is already in the queue")
             }
         }
     }
@@ -50,26 +69,32 @@ class TrackScheduler(
     }
 
     override fun noMatches() {
-        // LavaPlayer did not find any audio to extract
+        println("No matches found for the given input")
     }
 
     override fun loadFailed(exception: FriendlyException) {
-        // LavaPlayer could not parse an audio source for some reason
+        println("Failed to load track: ${exception.message}")
     }
 
     override fun onTrackEnd(player: AudioPlayer?, track: AudioTrack?, endReason: AudioTrackEndReason?) {
         endReason?.let {
             if (it.mayStartNext) {
+                firstSong = false
                 nextTrack()
+            } else {
+                firstSong = true
+                loop = false
+                playlistLoop = false
+
+                if (playlistLoop && queue.isEmpty()) {
+                    queue.addAll(initialPlaylist)
+                    nextTrack()
+                }
             }
         }
     }
 
     fun nextTrack() {
-        if (playlistLoop && queue.isEmpty()) {
-            queue.addAll(initialPlaylist)
-        }
-
         if (!loop) {
             currentTrack = queue.poll()
             currentTrack?.let { track ->
@@ -90,6 +115,17 @@ class TrackScheduler(
         fullTrackList.addAll(queue)
         return fullTrackList
     }
+
+    fun deleteTrack(index: Int) {
+        if (index >= 0 && index < queue.size) {
+            val list = ArrayList(queue)
+            list.removeAt(index)
+            queue = LinkedBlockingQueue(list)
+        } else {
+            println("Index out of bounds")
+        }
+    }
+
 
     fun shuffleQueue() {
         val shuffledList: List<AudioTrack> = queue.shuffled()

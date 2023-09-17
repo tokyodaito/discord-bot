@@ -1,5 +1,6 @@
 package bot
 
+import com.google.gson.JsonParser
 import com.sedmelluq.discord.lavaplayer.player.AudioPlayerManager
 import com.sedmelluq.discord.lavaplayer.player.DefaultAudioPlayerManager
 import com.sedmelluq.discord.lavaplayer.source.AudioSourceManagers
@@ -12,17 +13,20 @@ import discord4j.core.GatewayDiscordClient
 import discord4j.core.event.domain.VoiceStateUpdateEvent
 import discord4j.core.event.domain.message.MessageCreateEvent
 import discord4j.core.event.domain.message.ReactionAddEvent
+import discord4j.core.`object`.VoiceState
+import discord4j.core.`object`.entity.channel.VoiceChannel
 import discord4j.core.`object`.reaction.ReactionEmoji
 import reactor.core.publisher.Flux
 import reactor.core.publisher.Mono
 import java.lang.Integer.min
+import java.net.URL
+import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
 
 
-class Bot(id: String) {
+class Bot(id: String, private val apiKeyYouTube: String) {
     private val playerManager: AudioPlayerManager = DefaultAudioPlayerManager().apply {
-        configuration
-            .frameBufferFactory = AudioFrameBufferFactory { bufferDuration, format, stopping ->
+        configuration.frameBufferFactory = AudioFrameBufferFactory { bufferDuration, format, stopping ->
             NonAllocatingAudioFrameBuffer(bufferDuration, format, stopping)
         }
         AudioSourceManagers.registerRemoteSources(this)
@@ -36,9 +40,7 @@ class Bot(id: String) {
 
     init {
         initCommands()
-        val client: GatewayDiscordClient? = DiscordClientBuilder.create(id).build()
-            .login()
-            .block()
+        val client: GatewayDiscordClient? = DiscordClientBuilder.create(id).build().login().block()
 
         if (client != null) {
             setEventObserver(client)
@@ -58,33 +60,14 @@ class Bot(id: String) {
 
         commands["play"] = object : Command {
             override fun execute(event: MessageCreateEvent?): Mono<Void?>? {
-                val guildId = event?.guildId?.orElse(null) ?: return Mono.empty()
-                val musicManager = getGuildMusicManager(guildId)
+                return event?.let { play(it) }
+            }
 
-                musicManager.scheduler.currentEvent = event
+        }
 
-                return Mono.justOrEmpty(event.member)
-                    .flatMap { it.voiceState }
-                    .flatMap { it.channel }
-                    .flatMap { channel ->
-                        channel.join { spec -> spec.setProvider(musicManager.provider) }
-                            .then(
-                                Mono.justOrEmpty(event.message.content)
-                                    .map { content -> content.split(" ") }
-                                    .doOnNext { command ->
-                                        if (command != null) {
-                                            try {
-                                                playerManager.loadItem(command[1], musicManager.scheduler)
-                                                musicManager.player.addListener(musicManager.scheduler)
-                                            } catch (e: Exception) {
-                                                println("An error occurred: ${e.message}")
-                                                e.printStackTrace()
-                                            }
-                                        }
-                                    }
-                            )
-                    }
-                    .then()
+        commands["серега"] = object : Command {
+            override fun execute(event: MessageCreateEvent?): Mono<Void?>? {
+                return event?.let { play(it, SEREGA_PIRAT) }
             }
         }
 
@@ -94,123 +77,219 @@ class Bot(id: String) {
             }
         }
 
-        commands["next"] = object : Command {
-            override fun execute(event: MessageCreateEvent?): Mono<Void?>? {
-                val guildId = event?.guildId?.orElse(null) ?: return Mono.empty()
-                val musicManager = getGuildMusicManager(guildId)
+        commands["next"] =
+            object : Command {
+                override fun execute(event: MessageCreateEvent?): Mono<Void?>? {
+                    val guildId = event?.guildId?.orElse(null) ?: return Mono.empty()
+                    val musicManager = getGuildMusicManager(guildId)
+                    musicManager.scheduler.loop = false
 
-                return sendMessage(event, "Включен следующий трек").let {
-                    Mono.fromCallable { musicManager.scheduler.nextTrack() }.then(it)
-                }
-            }
-        }
-
-        commands["queue"] = object : Command {
-            override fun execute(event: MessageCreateEvent?): Mono<Void?>? {
-                return event?.let { showTrackList(it).then() }
-            }
-        }
-
-        commands["what"] = object : Command {
-            override fun execute(event: MessageCreateEvent?): Mono<Void?>? {
-                val guildId = event?.guildId?.orElse(null) ?: return Mono.empty()
-                val musicManager = getGuildMusicManager(guildId)
-
-                return musicManager.scheduler.currentTrack?.let { track ->
-                    sendEmbedMessage(
-                        event,
-                        track,
-                        loop = false,
-                        loopPlaylist = false,
-                        stayInQueueStatus = musicManager.scheduler.loop
-                    ).then()
-                }
-            }
-        }
-
-        commands["loop"] = object : Command {
-            override fun execute(event: MessageCreateEvent?): Mono<Void?>? {
-                val guildId = event?.guildId?.orElse(null) ?: return Mono.empty()
-                val musicManager = getGuildMusicManager(guildId)
-
-                return if (musicManager.scheduler.currentTrack != null) {
-                    Mono.fromCallable { musicManager.scheduler.loop = !musicManager.scheduler.loop }
-                        .flatMap {
-                            if (musicManager.scheduler.loop)
-                                sendMessage(event, "Повтор включен")
-                            else
-                                sendMessage(event, "Повтор выключен")
-                        }
-                        .then(
-                            sendEmbedMessage(
-                                event, musicManager.scheduler.currentTrack!!, musicManager.scheduler.loop,
-                                loopPlaylist = false, stayInQueueStatus = false
-                            )
-                        )
-                } else {
-                    Mono.empty()
-                }
-            }
-        }
-
-        commands["shuffle"] = object : Command {
-            override fun execute(event: MessageCreateEvent?): Mono<Void?>? {
-                val guildId = event?.guildId?.orElse(null) ?: return Mono.empty()
-                val musicManager = getGuildMusicManager(guildId)
-
-                return sendMessage(event, "Очередь перемешана").let {
-                    Mono.fromCallable { musicManager.scheduler.shuffleQueue() }.then(it)
-                }
-            }
-        }
-
-        commands["playlistloop"] = object : Command {
-            override fun execute(event: MessageCreateEvent?): Mono<Void?>? {
-                val guildId = event?.guildId?.orElse(null) ?: return Mono.empty()
-                val musicManager = getGuildMusicManager(guildId)
-
-                return Mono.fromCallable { musicManager.scheduler.playlistLoop = !musicManager.scheduler.playlistLoop }
-                    .flatMap {
-                        if (musicManager.scheduler.playlistLoop)
-                            sendMessage(event, "Циклический повтор плейлиста включен")
-                        else
-                            sendMessage(event, "Циклический повтор плейлиста выключен")
+                    return sendMessage(event, "Включен следующий трек").let {
+                        Mono.fromCallable { musicManager.scheduler.nextTrack() }.then(it)
                     }
+                }
             }
-        }
 
-        commands["jump"] = object : Command {
-            override fun execute(event: MessageCreateEvent?): Mono<Void?>? {
-                val guildId = event?.guildId?.orElse(null) ?: return Mono.empty()
-                val musicManager = getGuildMusicManager(guildId)
+        commands["queue"] =
+            object : Command {
+                override fun execute(event: MessageCreateEvent?): Mono<Void?>? {
+                    return event?.let { showTrackList(it).then() }
+                }
+            }
 
-                return run {
-                    val args = event.message.content.split(" ")
-                    if (args.size > 1) {
-                        val index = args[1].toIntOrNull()
-                        if (index != null && index > 0 && index <= musicManager.scheduler.getFullTrackList().size) {
-                            val track = musicManager.scheduler.getFullTrackList()[index - 1]
-                            musicManager.scheduler.currentTrack = track
-                            musicManager.scheduler.player.startTrack(track, false)
-                            sendMessage(event, "Перешёл к треку с индексом $index").then(
-                                sendEmbedMessage(
-                                    event,
-                                    track,
-                                    musicManager.scheduler.loop,
-                                    musicManager.scheduler.playlistLoop,
-                                    false
-                                )
+        commands["what"] =
+            object : Command {
+                override fun execute(event: MessageCreateEvent?): Mono<Void?>? {
+                    val guildId = event?.guildId?.orElse(null) ?: return Mono.empty()
+                    val musicManager = getGuildMusicManager(guildId)
+
+                    return musicManager.scheduler.currentTrack?.let { track ->
+                        sendEmbedMessage(
+                            event,
+                            track,
+                            loop = false,
+                            loopPlaylist = false,
+                            stayInQueueStatus = musicManager.scheduler.loop
+                        ).then()
+                    }
+                }
+            }
+
+        commands["loop"] =
+            object : Command {
+                override fun execute(event: MessageCreateEvent?): Mono<Void?>? {
+                    val guildId = event?.guildId?.orElse(null) ?: return Mono.empty()
+                    val musicManager = getGuildMusicManager(guildId)
+                    musicManager.scheduler.loop = !musicManager.scheduler.loop
+
+                    return if (musicManager.scheduler.currentTrack != null) {
+                        Mono.fromCallable {}.flatMap {
+                            if (musicManager.scheduler.loop) sendMessage(event, "Повтор включен")
+                            else sendMessage(event, "Повтор выключен")
+                        }.flatMap {
+                            sendEmbedMessage(
+                                event,
+                                musicManager.scheduler.currentTrack!!,
+                                musicManager.scheduler.loop,
+                                loopPlaylist = false,
+                                stayInQueueStatus = false
                             )
-                        } else {
-                            sendMessage(event, "Неверный индекс")
                         }
                     } else {
-                        sendMessage(event, "Укажите индекс трека")
+                        Mono.empty()
                     }
                 }
+            }
+
+        commands["shuffle"] =
+            object : Command {
+                override fun execute(event: MessageCreateEvent?): Mono<Void?>? {
+                    val guildId = event?.guildId?.orElse(null) ?: return Mono.empty()
+                    val musicManager = getGuildMusicManager(guildId)
+
+                    return sendMessage(event, "Очередь перемешана").let {
+                        Mono.fromCallable { musicManager.scheduler.shuffleQueue() }.then(it)
+                    }
+                }
+            }
+
+        commands["playlistloop"] =
+            object : Command {
+                override fun execute(event: MessageCreateEvent?): Mono<Void?>? {
+                    val guildId = event?.guildId?.orElse(null) ?: return Mono.empty()
+                    val musicManager = getGuildMusicManager(guildId)
+
+                    return Mono.fromCallable {
+                        musicManager.scheduler.playlistLoop = !musicManager.scheduler.playlistLoop
+                    }.flatMap {
+                        if (musicManager.scheduler.playlistLoop) sendMessage(
+                            event,
+                            "Циклический повтор плейлиста включен"
+                        )
+                        else sendMessage(event, "Циклический повтор плейлиста выключен")
+                    }
+                }
+            }
+
+        commands["jump"] =
+            object : Command {
+                override fun execute(event: MessageCreateEvent?): Mono<Void?>? {
+                    return event?.let { jump(it) }
+                }
+            }
+    }
+
+    fun play(event: MessageCreateEvent): Mono<Void?> {
+        val guildId = event.guildId.orElse(null) ?: return Mono.empty()
+        val musicManager = getGuildMusicManager(guildId)
+
+        musicManager.scheduler.currentEvent = event
+
+        return Mono.justOrEmpty(event.member)
+            .flatMap { it.voiceState }
+            .flatMap { it.channel }
+            .flatMap { channel ->
+                channel.join { spec -> spec.setProvider(musicManager.provider) }
+                    .then(
+                        Mono.justOrEmpty(event.message.content)
+                            .map { content -> content.split(" ") }
+                            .doOnNext { command ->
+                                if (command.size > 1) {
+                                    val input = command.subList(1, command.size).joinToString(" ")
+                                    if (!input.matches(Regex("^(https?|ftp)://[^\\s/$.?#].\\S*$"))) {
+                                        val youtubeSearchResult = searchYoutube(input)
+                                        if (youtubeSearchResult != null) {
+                                            playerManager.loadItem(youtubeSearchResult, musicManager.scheduler)
+                                        }
+                                    } else {
+                                        playerManager.loadItem(input, musicManager.scheduler)
+                                    }
+                                    musicManager.player.addListener(musicManager.scheduler)
+                                }
+                            }
+                    )
+            }
+            .then()
+    }
+
+
+    private fun searchYoutube(query: String): String? {
+        val encodedQuery = URLEncoder.encode(query, "UTF-8")
+        val apiUrl =
+            "https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=1&q=$encodedQuery&key=$apiKeyYouTube"
+
+        return try {
+            val resultJson = URL(apiUrl).readText()
+            val jsonObject = JsonParser.parseString(resultJson).asJsonObject
+            val items = jsonObject.getAsJsonArray("items")
+            if (items.size() > 0) {
+                val videoId = items.get(0).asJsonObject.getAsJsonObject("id").get("videoId").asString
+                "https://www.youtube.com/watch?v=$videoId"
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+
+    fun jump(event: MessageCreateEvent): Mono<Void?> {
+        val guildId = event.guildId.orElse(null) ?: return Mono.empty()
+        val musicManager = getGuildMusicManager(guildId)
+
+        return run {
+            val args = event.message.content.split(" ")
+            if (args.size > 1) {
+                val index = args[1].toIntOrNull()
+                if (index != null && index > 1 && index <= musicManager.scheduler.getFullTrackList().size) {
+                    val track = musicManager.scheduler.getFullTrackList()[index - 1]
+                    musicManager.scheduler.currentTrack = track
+                    musicManager.scheduler.player.startTrack(track, false)
+                    sendMessage(event, "Перешёл к треку с индексом $index").then(
+                        sendEmbedMessage(
+                            event,
+                            track,
+                            musicManager.scheduler.loop,
+                            musicManager.scheduler.playlistLoop,
+                            false
+                        )
+                    )
+                } else {
+                    sendMessage(event, "Неверный индекс")
+                }
+            } else {
+                sendMessage(event, "Укажите индекс трека")
             }
         }
     }
+
+    fun play(event: MessageCreateEvent, link: String): Mono<Void?> {
+        val guildId = event.guildId.orElse(null) ?: return Mono.empty<Void>()
+        val musicManager = getGuildMusicManager(guildId)
+
+        musicManager.scheduler.currentEvent = event
+
+        return Mono.justOrEmpty(event.member)
+            .flatMap { it.voiceState }
+            .flatMap { it.channel }
+            .flatMap { channel ->
+                channel.join { spec -> spec.setProvider(musicManager.provider) }
+                    .then(
+                        Mono.fromRunnable<Void> {
+                            try {
+                                playerManager.loadItem(link, musicManager.scheduler)
+                                musicManager.player.addListener(musicManager.scheduler)
+                            } catch (e: Exception) {
+                                println("An error occurred: ${e.message}")
+                                e.printStackTrace()
+                            }
+                        }
+                    )
+            }
+    }
+
 
     fun getGuildMusicManager(guildId: Snowflake): GuildMusicManager {
         return musicManagers.computeIfAbsent(guildId) {
@@ -220,30 +299,29 @@ class Bot(id: String) {
         }
     }
 
-
     private fun sendMessage(event: MessageCreateEvent, message: String): Mono<Void?> {
-        return event.message.channel
-            .flatMap { channel -> channel.createMessage(message) }
-            .then()
+        return event.message.channel.flatMap { channel -> channel.createMessage(message) }.then()
     }
 
     private fun stopPlaying(event: MessageCreateEvent): Mono<Void?> {
         val guildId = event.guildId.orElse(null) ?: return Mono.empty()
         val musicManager = getGuildMusicManager(guildId)
 
-        return Mono.justOrEmpty(event.member.orElse(null))
-            .flatMap { member ->
-                Mono.justOrEmpty(member?.voiceState?.block())
-                    .flatMap { voiceState ->
-                        Mono.justOrEmpty(voiceState?.channel?.block())
-                            .doOnNext { channel ->
-                                channel?.sendDisconnectVoiceState()?.block().let { musicManager.scheduler.clearQueue() }
-                            }
-                    }
+        return Mono.justOrEmpty(event.member.orElse(null)).flatMap { member ->
+            Mono.justOrEmpty(member?.voiceState?.block()).flatMap { voiceState ->
+                Mono.justOrEmpty(voiceState?.channel?.block()).doOnNext { channel ->
+                    channel?.sendDisconnectVoiceState()?.block()
+                        .let { musicManager.scheduler.clearQueue() }
+                }
             }
-            .then(
-                sendMessage(event, "Воспроизведение остановлено")
+        }.then(
+            sendMessage(event, "Воспроизведение остановлено")
+        ).then(
+            sendMessage(
+                event,
+                "https://media.discordapp.net/attachments/816984360665219113/959247739575750717/bylling.gif"
             )
+        )
     }
 
     private fun showTrackList(event: MessageCreateEvent): Mono<Void> {
@@ -263,49 +341,54 @@ class Bot(id: String) {
             }.joinToString("\n")
         }
 
-        return event.message.channel
-            .flatMap { channel ->
-                channel.createEmbed { embedCreateSpec ->
-                    embedCreateSpec.setTitle("Список песен (Страница ${currentPage + 1} из $totalPages)")
-                    embedCreateSpec.setDescription(formatTrackListPage(currentPage))
-                }.flatMap { message ->
-                    if (totalPages > 1) {
-                        message.addReaction(ReactionEmoji.unicode("⬅"))
-                            .then(message.addReaction(ReactionEmoji.unicode("➡")))
-                            .then(
-                                message.client.eventDispatcher.on(ReactionAddEvent::class.java)
-                                    .filter { it.messageId == message.id }
-                                    .filter { it.userId == event.message.author.get().id }
-                                    .filter { it.emoji.asUnicodeEmoji().isPresent }
-                                    .take(totalPages.toLong())
-                                    .flatMap { reactionEvent ->
-                                        when (reactionEvent.emoji.asUnicodeEmoji().get()) {
-                                            ReactionEmoji.unicode("⬅") -> {
-                                                if (currentPage > 0) {
-                                                    currentPage--
-                                                }
-                                            }
-
-                                            ReactionEmoji.unicode("➡") -> {
-                                                if (currentPage < totalPages - 1) {
-                                                    currentPage++
-                                                }
-                                            }
-                                        }
-                                        message.edit { spec ->
-                                            spec.setEmbed { embedCreateSpec ->
-                                                embedCreateSpec.setTitle("Список песен (Страница ${currentPage + 1} из $totalPages)")
-                                                embedCreateSpec.setDescription(formatTrackListPage(currentPage))
-                                            }
-                                        }.then(Mono.empty<Void>())
+        return event.message.channel.flatMap { channel ->
+            channel.createEmbed { embedCreateSpec ->
+                embedCreateSpec.setTitle("Список песен (Страница ${currentPage + 1} из $totalPages)")
+                embedCreateSpec.setDescription(formatTrackListPage(currentPage))
+            }.flatMap { message ->
+                if (totalPages > 1) {
+                    message.addReaction(ReactionEmoji.unicode("⬅"))
+                        .then(message.addReaction(ReactionEmoji.unicode("➡")))
+                        .then(message.client.eventDispatcher.on(ReactionAddEvent::class.java)
+                            .filter { it.messageId == message.id }
+                            .filter { it.userId == event.message.author.get().id }
+                            .filter { it.emoji.asUnicodeEmoji().isPresent }.take(totalPages.toLong())
+                            .flatMap { reactionEvent ->
+                                val changePage = when (reactionEvent.emoji.asUnicodeEmoji().get()) {
+                                    ReactionEmoji.unicode("⬅") -> {
+                                        if (currentPage > 0) {
+                                            currentPage--
+                                            true
+                                        } else false
                                     }
-                                    .then()
-                            )
-                    } else {
-                        Mono.empty()
-                    }
+
+                                    ReactionEmoji.unicode("➡") -> {
+                                        if (currentPage < totalPages - 1) {
+                                            currentPage++
+                                            true
+                                        } else false
+                                    }
+
+                                    else -> false
+                                }
+
+                                if (changePage) {
+                                    message.edit { spec ->
+                                        spec.setEmbed { embedCreateSpec ->
+                                            embedCreateSpec.setTitle("Список песен (Страница ${currentPage + 1} из $totalPages)")
+                                            embedCreateSpec.setDescription(formatTrackListPage(currentPage))
+                                        }
+                                    }.then()
+                                } else {
+                                    Mono.empty<Void>()
+                                }
+                            }.then()
+                        )
+                } else {
+                    Mono.empty()
                 }
             }
+        }
     }
 
 
@@ -316,24 +399,38 @@ class Bot(id: String) {
         loopPlaylist: Boolean,
         stayInQueueStatus: Boolean
     ): Mono<Void> {
-        return event.message.channel
-            .flatMap { channel ->
-                channel.createEmbed { embedCreateSpec ->
-                    val stayInQueue = if (stayInQueueStatus) "Поставлено в очередь" else "Играющий трек"
-                    embedCreateSpec.setTitle(stayInQueue)
-                    embedCreateSpec.setDescription("[${track.info.title}](https://www.youtube.com/watch?v=${track.info.identifier}) - ${track.info.author}")
-                    embedCreateSpec.setThumbnail(track.info.artworkUrl)
-                    val minutes = TimeUnit.MILLISECONDS.toMinutes(track.duration)
-                    val seconds = TimeUnit.MILLISECONDS.toSeconds(track.duration) % 60
-                    val loopStatus = if (loop) "Повтор включен" else ""
-                    val loopPlaylistStatus = if (loopPlaylist) "Повтор плейлиста включен" else ""
-                    embedCreateSpec.setFooter(
-                        "Трек длиной: $minutes минут $seconds секунд \n $loopStatus \n $loopPlaylistStatus",
-                        null
-                    )
-                }
+        val guildId = event.guildId.orElse(null)
+        val musicManager = getGuildMusicManager(guildId)
+
+        return Mono.defer {
+            if (!stayInQueueStatus) {
+                musicManager.scheduler.lastMessage?.delete()?.onErrorResume {
+                    Mono.empty()
+                } ?: Mono.empty()
+            } else {
+                Mono.empty()
             }
-            .then()
+        }.then(event.message.channel.flatMap { channel ->
+            channel.createEmbed { embedCreateSpec ->
+                val stayInQueue = if (stayInQueueStatus) "Поставлено в очередь" else "Играющий трек"
+                embedCreateSpec.setTitle(stayInQueue)
+                embedCreateSpec.setDescription("[${track.info.title}](https://www.youtube.com/watch?v=${track.info.identifier}) - ${track.info.author}")
+                embedCreateSpec.setThumbnail(track.info.artworkUrl)
+                val minutes = TimeUnit.MILLISECONDS.toMinutes(track.duration)
+                val seconds = TimeUnit.MILLISECONDS.toSeconds(track.duration) % 60
+                val loopStatus = if (loop) "Повтор включен" else ""
+                val loopPlaylistStatus = if (loopPlaylist) "Повтор плейлиста включен" else ""
+                embedCreateSpec.setFooter(
+                    "Трек длиной: $minutes минут $seconds секунд \n $loopStatus \n $loopPlaylistStatus",
+                    null
+                )
+            }.flatMap { message ->
+                if (!stayInQueueStatus) {
+                    musicManager.scheduler.lastMessage = message
+                }
+                Mono.empty<Void>()
+            }
+        })
     }
 
 
@@ -343,52 +440,80 @@ class Bot(id: String) {
     }
 
     private fun observeMessageEvents(client: GatewayDiscordClient) {
-        client.eventDispatcher.on(MessageCreateEvent::class.java)
-            .flatMap { event ->
-                Mono.just(event.message.content)
-                    .flatMap { content ->
-                        Flux.fromIterable(commands.entries)
-                            .filter { entry -> content.startsWith('!' + entry.key, ignoreCase = true) }
-                            .flatMap { entry -> entry.value.execute(event) }
-                            .next()
-                    }
+        client.eventDispatcher.on(MessageCreateEvent::class.java).flatMap { event ->
+            Mono.just(event.message.content).flatMap { content ->
+                Flux.fromIterable(commands.entries)
+                    .filter { entry -> content.startsWith('!' + entry.key, ignoreCase = true) }
+                    .flatMap { entry -> entry.value.execute(event) }.next()
             }
-            .subscribe()
+        }.subscribe()
     }
 
     private fun observeVoiceEvents(client: GatewayDiscordClient) {
-        client.eventDispatcher.on(VoiceStateUpdateEvent::class.java)
-            .flatMap { event ->
-                val guildId = event.current.guildId
-                val selfId = client.selfId
-                val oldChannelId = event.old.orElse(null)?.channelId?.orElse(null)
-                val currentChannelId = event.current.channelId.orElse(null)
+        client.eventDispatcher.on(VoiceStateUpdateEvent::class.java).flatMap { event ->
+            val guildId = event.current.guildId
+            val selfId = client.selfId
+            val oldChannelId = event.old.orElse(null)?.channelId?.orElse(null)
+            val currentChannelId = event.current.channelId.orElse(null)
 
-                if (oldChannelId == null && currentChannelId == null) {
-                    println("No channel state change")
-                    return@flatMap Mono.empty<Void>()
-                }
+            if (oldChannelId == null && currentChannelId == null) {
+                println("No channel state change")
+                return@flatMap Mono.empty<Void>()
+            }
 
-                println("Old channel ID: $oldChannelId, Current channel ID: $currentChannelId")
+            println("Old channel ID: $oldChannelId, Current channel ID: $currentChannelId")
 
-                event.current.channel.flatMap { channel ->
-                    channel.voiceStates.collectList().flatMap { voiceStates ->
-                        if (voiceStates.size == 1 && voiceStates[0].userId == selfId) {
-                            println("Only bot is present in the voice channel. Disconnecting and clearing the queue.")
-                            channel.sendDisconnectVoiceState().then(Mono.fromRunnable {
-                                getGuildMusicManager(guildId).scheduler.clearQueue()
-                            })
-                        } else {
-                            println("More than one member is present in the voice channel.")
-                            Mono.empty()
+            Mono.defer {
+                oldChannelId?.let { oldId ->
+                    println("Old channel")
+                    client.getChannelById(oldId).ofType(VoiceChannel::class.java).flatMap { channel ->
+                        channel.voiceStates.collectList().flatMap { voiceStates ->
+                            handleVoiceState(selfId, guildId, channel, voiceStates)
                         }
+                    }.onErrorResume {
+                        println("Error: $it")
+                        Mono.empty()
                     }
+                } ?: Mono.empty<Void>()
+            }.then(Mono.defer {
+                currentChannelId?.let { currentId ->
+                    println("Current channel")
+                    client.getChannelById(currentId).ofType(VoiceChannel::class.java).flatMap { channel ->
+                        channel.voiceStates.collectList().flatMap { voiceStates ->
+                            handleVoiceState(selfId, guildId, channel, voiceStates)
+                        }
+                    }.onErrorResume { Mono.empty<Void>() }
+                } ?: Mono.empty<Void>()
+            })
+        }.doOnError { error ->
+            println("An error occurred: ${error.message}")
+            error.printStackTrace()
+        }.subscribe()
+    }
+
+
+    private fun handleVoiceState(
+        selfId: Snowflake, guildId: Snowflake, channel: VoiceChannel, voiceStates: List<VoiceState>
+    ): Mono<Void> {
+        return if (voiceStates.size == 1 && voiceStates[0].userId == selfId) {
+            println("Only bot is present in the voice channel. Disconnecting and clearing the queue.")
+            channel.sendDisconnectVoiceState().then(Mono.fromRunnable<Void?> {
+                getGuildMusicManager(guildId).scheduler.clearQueue()
+            }.flatMap {
+                getGuildMusicManager(guildId).scheduler.currentEvent?.let { it1 ->
+                    sendMessage(
+                        it1, "Воспроизведение остановлено"
+                    )
                 }
-            }
-            .doOnError { error ->
-                println("An error occurred: ${error.message}")
-                error.printStackTrace()
-            }
-            .subscribe()
+            })
+        } else {
+            println("More than one member is present in the voice channel.")
+            Mono.empty()
+        }
+    }
+
+    companion object {
+        const val SEREGA_PIRAT = "https://www.youtube.com/watch?v=KhX3T_NYndo&list=PLaxxU3ZabospOFUVjRWofD-mYOQfCxpzw"
+        const val VI_KA = "https://www.youtube.com/watch?v=SXe1aTEJU2w&pp=ygUFVkkgS0E%3D"
     }
 }
