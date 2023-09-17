@@ -19,6 +19,8 @@ jobs:
       run: chmod +x ./gradlew
     - name: Build with Gradle
       run: ./gradlew build
+    - name: List build/libs directory
+      run: ls -l build/libs
 
   deploy:
       needs: build
