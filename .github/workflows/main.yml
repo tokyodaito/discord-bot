@@ -43,9 +43,9 @@ jobs:
       - name: Check workspace
         run: |
           pwd
-          ls -l $GITHUB_WORKSPACE/build/libs/
+          ls -l build/libs/
   
       - name: Deploy to Server
         run: |
-          scp -i deploy_key $GITHUB_WORKSPACE/build/libs/discord-bot-1.0-SNAPSHOT.jar root@95.214.11.223:/root/discordBot
+          scp -i deploy_key build/libs/discord-bot-1.0-SNAPSHOT.jar root@95.214.11.223:/root/discordBot
           ssh -i deploy_key root@95.214.11.223 "systemctl restart discord-bot"
