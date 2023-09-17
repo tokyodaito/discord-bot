@@ -21,15 +21,24 @@ jobs:
       run: ./gradlew build
 
   deploy:
-    needs: build
-    runs-on: ubuntu-latest
-
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v2
-    - name: Deploy to Server
-      run: |
-        scp build/libs/discord-bot.jar root@95.214.11.223:/root/discordBot
-        ssh root@95.214.11.223 "systemctl restart discord-bot"
-    env:
-      DEPLOY_KEY: ${{ secrets.SERVER_SSH_KEY }}
+      needs: build
+      runs-on: ubuntu-latest
+  
+      steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+  
+      - name: Add server to known hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H 95.214.11.223 >> ~/.ssh/known_hosts
+  
+      - name: Setup SSH key
+        run: |
+          echo "${{ secrets.SERVER_SSH_KEY }}" > deploy_key
+          chmod 600 deploy_key
+  
+      - name: Deploy to Server
+        run: |
+          scp -i deploy_key build/libs/discord-bot.jar root@95.214.11.223:/root/discordBot
+          ssh -i deploy_key root@95.214.11.223 "systemctl restart discord-bot"
