@@ -13,6 +13,8 @@ class GuildMusicManager(
     playerManager: AudioPlayerManager,
     val sendEmbedMessage: (MessageCreateEvent, AudioTrack, Boolean, Boolean, Boolean) -> Mono<Void>
 ) {
+    @Volatile
+    internal var godMode = false
     internal val player: AudioPlayer = playerManager.createPlayer()
     internal val scheduler = TrackScheduler(player) { messageCreateEvent, audioTrack, loop, stayInQueue, loopPlaylist ->
         sendEmbedMessage(messageCreateEvent, audioTrack, loop, stayInQueue, loopPlaylist)

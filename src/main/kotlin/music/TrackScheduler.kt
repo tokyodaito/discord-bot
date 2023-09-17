@@ -79,16 +79,18 @@ class TrackScheduler(
     override fun onTrackEnd(player: AudioPlayer?, track: AudioTrack?, endReason: AudioTrackEndReason?) {
         endReason?.let {
             if (it.mayStartNext) {
-                firstSong = false
-                nextTrack()
-            } else {
-                firstSong = true
-                loop = false
-                playlistLoop = false
-
-                if (playlistLoop && queue.isEmpty()) {
-                    queue.addAll(initialPlaylist)
+                if (!queue.isEmpty()) {
+                    firstSong = false
                     nextTrack()
+                } else {
+                    firstSong = true
+                    loop = false
+                    playlistLoop = false
+
+                    if (playlistLoop && queue.isEmpty()) {
+                        queue.addAll(initialPlaylist)
+                        nextTrack()
+                    }
                 }
             }
         }

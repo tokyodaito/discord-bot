@@ -38,6 +38,8 @@ class Bot(id: String, private val apiKeyYouTube: String) {
 
     private val commands: MutableMap<String, Command> = HashMap()
 
+    private val godModeUserId = "284039904495927297"
+
     init {
         initCommands()
         val client: GatewayDiscordClient? = DiscordClientBuilder.create(id).build().login().block()
@@ -67,7 +69,20 @@ class Bot(id: String, private val apiKeyYouTube: String) {
 
         commands["серега"] = object : Command {
             override fun execute(event: MessageCreateEvent?): Mono<Void?>? {
-                return event?.let { play(it, SEREGA_PIRAT) }
+                return event?.let {
+                    play(it, SEREGA_PIRAT).then(
+                        sendMessage(
+                            event,
+                            "https://tenor.com/view/pirat-serega-pirat-papich-dance-dancing-gif-17296890"
+                        )
+                    )
+                }
+            }
+        }
+
+        commands["godmode"] = object : Command {
+            override fun execute(event: MessageCreateEvent?): Mono<Void?>? {
+                return event?.let { Mono.fromCallable { godMode(it, true) }.then() }
             }
         }
 
@@ -178,6 +193,25 @@ class Bot(id: String, private val apiKeyYouTube: String) {
                 }
             }
     }
+
+    fun godMode(event: MessageCreateEvent, status: Boolean) {
+        val guildId = event.guildId.orElse(null)
+        val musicManager = getGuildMusicManager(guildId)
+
+        val senderId = event.message.author.orElse(null)?.id?.asString()
+        if (senderId == godModeUserId) {
+            musicManager.godMode = status
+            if (status)
+                sendMessage(event, "godmode enable").then(sendMessage(event, "https://media.discordapp.net/attachments/965181691981357056/1009410729406906389/2cabf388b2232cc6b21d42cfb5d30266.gif")).subscribe()
+            else
+                sendMessage(event, "godmode disabled").subscribe()
+        } else {
+            event.message.channel.flatMap {
+                it.createMessage("You do not have the permissions to change the god mode status.")
+            }.subscribe()
+        }
+    }
+
 
     fun play(event: MessageCreateEvent): Mono<Void?> {
         val guildId = event.guildId.orElse(null) ?: return Mono.empty()
@@ -441,10 +475,17 @@ class Bot(id: String, private val apiKeyYouTube: String) {
 
     private fun observeMessageEvents(client: GatewayDiscordClient) {
         client.eventDispatcher.on(MessageCreateEvent::class.java).flatMap { event ->
+            val guildId = event?.guildId?.orElse(null) ?: return@flatMap Mono.empty()
+            val musicManager = getGuildMusicManager(guildId)
+
             Mono.just(event.message.content).flatMap { content ->
-                Flux.fromIterable(commands.entries)
-                    .filter { entry -> content.startsWith('!' + entry.key, ignoreCase = true) }
-                    .flatMap { entry -> entry.value.execute(event) }.next()
+                if (musicManager.godMode && event.message.author.orElse(null)?.id?.asString() != godModeUserId) {
+                    Mono.empty()
+                } else {
+                    Flux.fromIterable(commands.entries)
+                        .filter { entry -> content.startsWith('!' + entry.key, ignoreCase = true) }
+                        .flatMap { entry -> entry.value.execute(event) }.next()
+                }
             }
         }.subscribe()
     }
