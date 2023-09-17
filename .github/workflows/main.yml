@@ -21,6 +21,11 @@ jobs:
       run: ./gradlew build
     - name: List build/libs directory
       run: ls -l build/libs
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v2
+      with:
+        name: build-artifacts
+        path: build/libs/
 
   deploy:
       needs: build
@@ -29,22 +34,23 @@ jobs:
       steps:
       - name: Checkout
         uses: actions/checkout@v2
-  
+      - name: Download build artifacts
+        uses: actions/download-artifact@v2
+        with:
+          name: build-artifacts
+          path: build/libs/
       - name: Add server to known hosts
         run: |
           mkdir -p ~/.ssh
           ssh-keyscan -H 95.214.11.223 >> ~/.ssh/known_hosts
-  
       - name: Setup SSH key
         run: |
           echo "${{ secrets.SERVER_SSH_KEY }}" > deploy_key
           chmod 600 deploy_key
-
       - name: Check workspace
         run: |
           pwd
           ls -l build/libs/
-  
       - name: Deploy to Server
         run: |
           scp -i deploy_key build/libs/discord-bot-1.0-SNAPSHOT.jar root@95.214.11.223:/root/discordBot
