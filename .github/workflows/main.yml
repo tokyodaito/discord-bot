@@ -29,12 +29,7 @@ jobs:
       uses: actions/checkout@v2
     - name: Deploy to Server
       run: |
-        echo "$DEPLOY_KEY" | tr -d '\r' > deploy_key
-        chmod 600 deploy_key
-        ssh-keyscan -H 95.214.11.223 >> ~/.ssh/known_hosts
-        eval "$(ssh-agent -s)"
-        ssh-add deploy_key
         scp build/libs/discord-bot.jar root@95.214.11.223:/root/discordBot
-        ssh root@95.214.11.223 "systemctl restart myapp"
+        ssh root@95.214.11.223 "systemctl restart discord-bot"
     env:
       DEPLOY_KEY: ${{ secrets.SERVER_SSH_KEY }}
