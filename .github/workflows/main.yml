@@ -36,5 +36,5 @@ jobs:
         ssh-add deploy_key
         scp build/libs/discord-bot.jar root@95.214.11.223:/root/discordBot
         ssh root@95.214.11.223 "systemctl restart myapp"
-  env:
-    DEPLOY_KEY: ${{ secrets.SERVER_SSH_KEY }}
+    env:
+      DEPLOY_KEY: ${{ secrets.SERVER_SSH_KEY }}
