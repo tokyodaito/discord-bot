@@ -44,8 +44,10 @@ tasks.withType<Jar> {
         )
     }
 
-    from(configurations.runtimeClasspath.get().filter { it.isDirectory || it.name.endsWith("jar") }
-        .flatMap { if (it.isDirectory) listOf(it) else listOf(zipTree(it)) })
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+
+    from(configurations.runtimeClasspath.get().filter { it.isDirectory || it.name.endsWith("jar") }.flatMap { if (it.isDirectory) listOf(it) else listOf(zipTree(it)) })
 }
+
 
 
