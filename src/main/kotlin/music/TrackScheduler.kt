@@ -92,8 +92,6 @@ class TrackScheduler(
                     if (playlistLoop && queue.isEmpty()) {
                         queue.addAll(initialPlaylist)
                         nextTrack()
-                    } else {
-                        currentEvent?.let { event -> stopAndLeave(event).subscribe() }
                     }
                 }
             }
