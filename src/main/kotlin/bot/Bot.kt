@@ -86,6 +86,13 @@ class Bot(id: String, private val apiKeyYouTube: String) {
             }
         }
 
+        commands["help"] = object : Command {
+            override fun execute(event: MessageCreateEvent?): Mono<Void?>? {
+                TODO("Not yet implemented")
+            }
+
+        }
+
         commands["stop"] = object : Command {
             override fun execute(event: MessageCreateEvent?): Mono<Void?>? {
                 return event?.let { stopPlaying(it) }

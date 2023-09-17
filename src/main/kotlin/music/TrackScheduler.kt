@@ -9,7 +9,9 @@ import com.sedmelluq.discord.lavaplayer.track.AudioTrack
 import com.sedmelluq.discord.lavaplayer.track.AudioTrackEndReason
 import discord4j.core.event.domain.message.MessageCreateEvent
 import discord4j.core.`object`.entity.Message
+import discord4j.core.`object`.entity.channel.VoiceChannel
 import reactor.core.publisher.Mono
+import java.time.Duration
 import java.util.concurrent.BlockingQueue
 import java.util.concurrent.LinkedBlockingQueue
 
@@ -90,11 +92,28 @@ class TrackScheduler(
                     if (playlistLoop && queue.isEmpty()) {
                         queue.addAll(initialPlaylist)
                         nextTrack()
+                    } else {
+                        currentEvent?.let { event -> stopAndLeave(event).subscribe() }
                     }
                 }
             }
         }
     }
+
+    private fun stopAndLeave(event: MessageCreateEvent): Mono<VoiceChannel?> {
+        return event.member.orElse(null)?.let { member ->
+            member.voiceState.flatMap { voiceState ->
+                voiceState.channel.flatMap { channel ->
+                    channel.sendDisconnectVoiceState().delayElement(Duration.ofSeconds(3))
+                        .then(Mono.fromRunnable<Void> {
+                            clearQueue()
+                        }.delayElement(Duration.ofSeconds(3)))
+                        .thenReturn(channel)
+                }
+            }
+        } ?: Mono.empty<VoiceChannel?>()
+    }
+
 
     fun nextTrack() {
         if (!loop) {
