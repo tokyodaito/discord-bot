@@ -12,7 +12,7 @@ repositories {
     mavenCentral()
 
     maven {
-       setUrl("https://jitpack.io")
+        setUrl("https://jitpack.io")
     }
 }
 
@@ -36,3 +36,16 @@ tasks.withType<KotlinCompile> {
 application {
     mainClass.set("MainKt")
 }
+
+tasks.withType<Jar> {
+    manifest {
+        attributes(
+            "Main-Class" to "org.example.MainKt"
+        )
+    }
+
+    from(configurations.runtimeClasspath.get().filter { it.isDirectory || it.name.endsWith("jar") }
+        .flatMap { if (it.isDirectory) listOf(it) else listOf(zipTree(it)) })
+}
+
+
