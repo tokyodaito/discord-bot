@@ -40,7 +40,7 @@ application {
 tasks.withType<Jar> {
     manifest {
         attributes(
-            "Main-Class" to "org.example.MainKt"
+            "Main-Class" to "MainKt"
         )
     }
 
