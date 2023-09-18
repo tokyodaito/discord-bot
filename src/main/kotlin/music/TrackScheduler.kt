@@ -9,10 +9,7 @@ import com.sedmelluq.discord.lavaplayer.track.AudioTrack
 import com.sedmelluq.discord.lavaplayer.track.AudioTrackEndReason
 import discord4j.core.event.domain.message.MessageCreateEvent
 import discord4j.core.`object`.entity.Message
-import discord4j.core.`object`.entity.channel.VoiceChannel
-import reactor.core.publisher.Mono
 import service.MessageService
-import java.time.Duration
 import java.util.concurrent.BlockingQueue
 import java.util.concurrent.LinkedBlockingQueue
 
@@ -43,26 +40,36 @@ class TrackScheduler(
     private var initialPlaylist: List<AudioTrack> = listOf()
 
     override fun trackLoaded(track: AudioTrack?) {
-        track?.let {
-            if (player.startTrack(it, true)) {
-                currentTrack = it
-                if (firstSong) {
-                    currentEvent?.let { event ->
-                        messageService.sendEmbedMessage(event, track, loop, playlistLoop, false).subscribe()
-                    } ?: println("Current event is null")
-                } else {
-                    print("WTF??")
+        track?.let { trackNotNull ->
+            val event = currentEvent
+            if (event == null) {
+                println("Current event is null")
+                return
+            }
+
+            when {
+                player.startTrack(trackNotNull, true) -> {
+                    currentTrack = trackNotNull
+                    if (!firstSong) {
+                        print("WTF??")
+                        return
+                    }
+
+                    messageService.sendInformationAboutSong(event, trackNotNull, loop, playlistLoop, false).subscribe()
                 }
-            } else if (!queue.contains(it)) {
-                queue.offer(it)
-                currentEvent?.let { event ->
-                    messageService.sendEmbedMessage(event, track, loop, playlistLoop, true).subscribe()
+
+                !queue.contains(trackNotNull) -> {
+                    queue.offer(trackNotNull)
+                    messageService.sendInformationAboutSong(event, trackNotNull, loop, playlistLoop, true).subscribe()
                 }
-            } else {
-                println("Track is already in the queue")
+
+                else -> {
+                    println("Track is already in the queue")
+                }
             }
         }
     }
+
 
     override fun playlistLoaded(playlist: AudioPlaylist?) {
         playlist?.tracks?.let {
@@ -82,58 +89,45 @@ class TrackScheduler(
     }
 
     override fun onTrackEnd(player: AudioPlayer?, track: AudioTrack?, endReason: AudioTrackEndReason?) {
-        endReason?.let {
-            if (it.mayStartNext) {
-                if (!queue.isEmpty()) {
+        endReason?.takeIf { it.mayStartNext }?.let {
+            when {
+                queue.isNotEmpty() -> {
                     firstSong = false
                     nextTrack()
-                } else {
+                }
+
+                currentTrack != null && loop -> {
+                    firstSong = false
+                    nextTrack()
+                }
+
+                playlistLoop -> {
+                    queue.addAll(initialPlaylist)
+                    nextTrack()
+                }
+
+                else -> {
                     firstSong = true
                     loop = false
-                    playlistLoop = false
-
-                    if (playlistLoop && queue.isEmpty()) {
-                        queue.addAll(initialPlaylist)
-                        nextTrack()
-                    }
                 }
             }
         }
-    }
-
-    private fun stopAndLeave(event: MessageCreateEvent): Mono<VoiceChannel?> {
-        return event.member.orElse(null)?.let { member ->
-            member.voiceState.flatMap { voiceState ->
-                voiceState.channel.flatMap { channel ->
-                    channel.sendDisconnectVoiceState().delayElement(Duration.ofSeconds(3))
-                        .then(Mono.fromRunnable<Void> {
-                            clearQueue()
-                        }.delayElement(Duration.ofSeconds(3)))
-                        .thenReturn(channel)
-                }
-            }
-        } ?: Mono.empty<VoiceChannel?>()
     }
 
 
     fun nextTrack() {
         if (!loop) {
             currentTrack = queue.poll()
-            currentTrack?.let { track ->
-                player.startTrack(track, false)
-                currentEvent?.let { event ->
-                    messageService.sendEmbedMessage(event, track, loop, playlistLoop, false).subscribe()
-                }
-            }
-        } else {
-            currentTrack?.let { track ->
-                player.startTrack(track.makeClone(), false)
-                currentEvent?.let { event ->
-                    messageService.sendEmbedMessage(event, track, loop, playlistLoop, false).subscribe()
-                }
+        }
+        currentTrack?.let { track ->
+            val trackToPlay = if (loop) track.makeClone() else track
+            player.startTrack(trackToPlay, false)
+            currentEvent?.let { event ->
+                messageService.sendInformationAboutSong(event, trackToPlay, loop, playlistLoop, false).subscribe()
             }
         }
     }
+
 
     fun getFullTrackList(): List<AudioTrack> {
         val fullTrackList = mutableListOf<AudioTrack>()
@@ -152,6 +146,17 @@ class TrackScheduler(
         }
     }
 
+    fun jumpToTrack(index: Int): Boolean {
+        val trackList = getFullTrackList()
+        return if (index > 1 && index <= trackList.size) {
+            val track = trackList[index - 1]
+            currentTrack = track
+            player.startTrack(track, false)
+            true
+        } else {
+            false
+        }
+    }
 
     fun shuffleQueue() {
         val shuffledList: List<AudioTrack> = queue.shuffled()

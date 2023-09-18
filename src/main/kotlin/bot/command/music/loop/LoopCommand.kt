@@ -20,7 +20,7 @@ class LoopCommand : Command {
                 if (musicManager.scheduler.loop) messageService.sendMessage(event, "Повтор включен")
                 else messageService.sendMessage(event, "Повтор выключен")
             }.flatMap {
-                messageService.sendEmbedMessage(
+                messageService.sendInformationAboutSong(
                     event,
                     musicManager.scheduler.currentTrack!!,
                     musicManager.scheduler.loop,
