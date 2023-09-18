@@ -2,8 +2,11 @@ package service
 
 import com.sedmelluq.discord.lavaplayer.track.AudioTrack
 import discord4j.core.event.domain.message.MessageCreateEvent
+import discord4j.core.`object`.entity.Message
+import discord4j.rest.util.Color
 import manager.GuildManager
 import reactor.core.publisher.Mono
+import java.time.Instant
 import java.util.concurrent.TimeUnit
 
 class MessageService {
@@ -11,15 +14,14 @@ class MessageService {
         return event.message.channel.flatMap { channel -> channel.createMessage(message) }.then()
     }
 
-    fun sendEmbedMessage(
+    fun sendInformationAboutSong(
         event: MessageCreateEvent,
         track: AudioTrack,
         loop: Boolean,
         loopPlaylist: Boolean,
         stayInQueueStatus: Boolean
     ): Mono<Void> {
-        val guildId = event.guildId.orElse(null)
-        val musicManager = GuildManager.getGuildMusicManager(guildId)
+        val musicManager = GuildManager.getGuildMusicManager(event)
 
         return Mono.defer {
             if (!stayInQueueStatus) {
@@ -29,26 +31,48 @@ class MessageService {
             } else {
                 Mono.empty()
             }
-        }.then(event.message.channel.flatMap { channel ->
-            channel.createEmbed { embedCreateSpec ->
-                val stayInQueue = if (stayInQueueStatus) "Поставлено в очередь" else "Играющий трек"
-                embedCreateSpec.setTitle(stayInQueue)
-                embedCreateSpec.setDescription("[${track.info.title}](https://www.youtube.com/watch?v=${track.info.identifier}) - ${track.info.author}")
-                embedCreateSpec.setThumbnail(track.info.artworkUrl)
-                val minutes = TimeUnit.MILLISECONDS.toMinutes(track.duration)
-                val seconds = TimeUnit.MILLISECONDS.toSeconds(track.duration) % 60
-                val loopStatus = if (loop) "Повтор включен" else ""
-                val loopPlaylistStatus = if (loopPlaylist) "Повтор плейлиста включен" else ""
-                embedCreateSpec.setFooter(
-                    "Трек длиной: $minutes минут $seconds секунд \n $loopStatus \n $loopPlaylistStatus",
-                    null
-                )
-            }.flatMap { message ->
+        }.then(event.message.channel.flatMap {
+            createEmbedMessage(
+                event,
+                if (stayInQueueStatus) "Поставлено в очередь" else "Играющий трек",
+                "[${track.info.title}](https://www.youtube.com/watch?v=${track.info.identifier}) - ${track.info.author}",
+                track.info.artworkUrl,
+                "Трек длиной: ${TimeUnit.MILLISECONDS.toMinutes(track.duration)} минут ${
+                    TimeUnit.MILLISECONDS.toSeconds(
+                        track.duration
+                    ) % 60
+                } секунд \n ${if (loop) "Повтор включен" else ""} \n ${if (loopPlaylist) "Повтор плейлиста включен" else ""}"
+            ).flatMap { message ->
                 if (!stayInQueueStatus) {
                     musicManager.scheduler.lastMessage = message
                 }
                 Mono.empty<Void>()
             }
         })
+    }
+
+    fun createEmbedMessage(
+        event: MessageCreateEvent,
+        title: String? = null,
+        description: String? = null,
+        thumbnail: String? = null,
+        footer: String? = null,
+        color: Color? = null,
+        timestamp: Instant? = null,
+        image: String? = null,
+        author: String? = null,
+    ): Mono<Message> {
+        return event.message.channel.flatMap { channel ->
+            channel.createEmbed { embedCreateSpec ->
+                title?.let { embedCreateSpec.setTitle(it) }
+                description?.let { embedCreateSpec.setDescription(it) }
+                thumbnail?.let { embedCreateSpec.setThumbnail(it) }
+                footer?.let { embedCreateSpec.setFooter(it, null) }
+                color?.let { embedCreateSpec.setColor(it) }
+                timestamp?.let { embedCreateSpec.setTimestamp(it) }
+                image?.let { embedCreateSpec.setImage(it) }
+                author?.let { embedCreateSpec.setAuthor(it, null, null) }
+            }
+        }
     }
 }
