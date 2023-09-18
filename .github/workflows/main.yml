@@ -42,7 +42,7 @@ jobs:
       - name: Add server to known hosts
         run: |
           mkdir -p ~/.ssh
-          ssh-keyscan -H 95.214.11.223 >> ~/.ssh/known_hosts
+          ssh-keyscan -H ${{ secrets.SERVER_IP }} >> ~/.ssh/known_hosts
       - name: Setup SSH key
         run: |
           echo "${{ secrets.SERVER_SSH_KEY }}" > deploy_key
@@ -53,5 +53,5 @@ jobs:
           ls -l build/libs/
       - name: Deploy to Server
         run: |
-          scp -i deploy_key build/libs/discord-bot-1.0-SNAPSHOT.jar root@95.214.11.223:/root/discordBot
-          ssh -i deploy_key root@95.214.11.223 "systemctl restart discord-bot"
+          scp -i deploy_key build/libs/discord-bot-1.0-SNAPSHOT.jar root@${{ secrets.SERVER_IP }}:/root/discordBot
+          ssh -i deploy_key root@${{ secrets.SERVER_IP }} "systemctl restart discord-bot"
