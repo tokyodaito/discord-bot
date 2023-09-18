@@ -11,14 +11,15 @@ import discord4j.core.event.domain.message.MessageCreateEvent
 import discord4j.core.`object`.entity.Message
 import discord4j.core.`object`.entity.channel.VoiceChannel
 import reactor.core.publisher.Mono
+import service.MessageService
 import java.time.Duration
 import java.util.concurrent.BlockingQueue
 import java.util.concurrent.LinkedBlockingQueue
 
 class TrackScheduler(
-    internal val player: AudioPlayer,
-    val sendInfo: (MessageCreateEvent, AudioTrack, Boolean, Boolean, Boolean) -> Mono<Void>
+    val player: AudioPlayer,
 ) : AudioLoadResultHandler, AudioEventAdapter() {
+    private val messageService = MessageService()
 
     private var queue: BlockingQueue<AudioTrack> = LinkedBlockingQueue()
 
@@ -47,14 +48,16 @@ class TrackScheduler(
                 currentTrack = it
                 if (firstSong) {
                     currentEvent?.let { event ->
-                        sendInfo(event, track, loop, playlistLoop, false).subscribe()
+                        messageService.sendEmbedMessage(event, track, loop, playlistLoop, false).subscribe()
                     } ?: println("Current event is null")
                 } else {
                     print("WTF??")
                 }
             } else if (!queue.contains(it)) {
                 queue.offer(it)
-                currentEvent?.let { event -> sendInfo(event, track, loop, playlistLoop, true).subscribe() }
+                currentEvent?.let { event ->
+                    messageService.sendEmbedMessage(event, track, loop, playlistLoop, true).subscribe()
+                }
             } else {
                 println("Track is already in the queue")
             }
@@ -118,12 +121,16 @@ class TrackScheduler(
             currentTrack = queue.poll()
             currentTrack?.let { track ->
                 player.startTrack(track, false)
-                currentEvent?.let { event -> sendInfo(event, track, loop, playlistLoop, false).subscribe() }
+                currentEvent?.let { event ->
+                    messageService.sendEmbedMessage(event, track, loop, playlistLoop, false).subscribe()
+                }
             }
         } else {
             currentTrack?.let { track ->
                 player.startTrack(track.makeClone(), false)
-                currentEvent?.let { event -> sendInfo(event, track, loop, playlistLoop, false).subscribe() }
+                currentEvent?.let { event ->
+                    messageService.sendEmbedMessage(event, track, loop, playlistLoop, false).subscribe()
+                }
             }
         }
     }
