@@ -10,8 +10,8 @@ class GuildMusicManager(
     playerManager: AudioPlayerManager
 ) {
     @Volatile
-    public var godMode = false
-    public val player: AudioPlayer = playerManager.createPlayer()
-    public val scheduler = TrackScheduler(player)
+    var godMode = false
+    val player: AudioPlayer = playerManager.createPlayer()
+    val scheduler = TrackScheduler(player)
     val provider: AudioProvider = LavaPlayerAudioProvider(player)
 }
