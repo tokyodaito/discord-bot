@@ -173,14 +173,25 @@ class MusicService {
                                 }
 
                                 if (changePage) {
-                                    messageService.createEmbedMessage(
-                                        event,
+                                    messageService.editEmbedMessage(
+                                        message,
                                         "Список песен (Страница ${currentPage + 1} из $totalPages)",
                                         formatTrackListPage(currentPage)
+                                    ).then(
+                                        message.removeReaction(
+                                            ReactionEmoji.unicode("➡"),
+                                            event.message.author.get().id
+                                        )
+                                    ).then(
+                                        message.removeReaction(
+                                            ReactionEmoji.unicode("⬅"),
+                                            event.message.author.get().id
+                                        )
                                     ).then()
                                 } else {
                                     Mono.empty<Void>()
                                 }
+
                             }.then()
                         )
                 } else {

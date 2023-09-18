@@ -29,9 +29,6 @@ class TrackScheduler(
     var currentEvent: MessageCreateEvent? = null
 
     @Volatile
-    private var firstSong = true
-
-    @Volatile
     var playlistLoop: Boolean = false
 
     @Volatile
@@ -50,12 +47,6 @@ class TrackScheduler(
             when {
                 player.startTrack(trackNotNull, true) -> {
                     currentTrack = trackNotNull
-                    if (!firstSong) {
-                        print("WTF??")
-                        return
-                    }
-
-                    messageService.sendInformationAboutSong(event, trackNotNull, loop, playlistLoop, false).subscribe()
                 }
 
                 !queue.contains(trackNotNull) -> {
@@ -88,16 +79,20 @@ class TrackScheduler(
         println("Failed to load track: ${exception.message}")
     }
 
+    override fun onTrackStart(player: AudioPlayer?, track: AudioTrack?) {
+        currentEvent?.let { event ->
+            track?.let { messageService.sendInformationAboutSong(event, it, loop, playlistLoop, false).subscribe() }
+        }
+    }
+
     override fun onTrackEnd(player: AudioPlayer?, track: AudioTrack?, endReason: AudioTrackEndReason?) {
         endReason?.takeIf { it.mayStartNext }?.let {
             when {
                 queue.isNotEmpty() -> {
-                    firstSong = false
                     nextTrack()
                 }
 
                 currentTrack != null && loop -> {
-                    firstSong = false
                     nextTrack()
                 }
 
@@ -107,13 +102,11 @@ class TrackScheduler(
                 }
 
                 else -> {
-                    firstSong = true
                     loop = false
                 }
             }
         }
     }
-
 
     fun nextTrack() {
         if (!loop) {
@@ -122,9 +115,6 @@ class TrackScheduler(
         currentTrack?.let { track ->
             val trackToPlay = if (loop) track.makeClone() else track
             player.startTrack(trackToPlay, false)
-            currentEvent?.let { event ->
-                messageService.sendInformationAboutSong(event, trackToPlay, loop, playlistLoop, false).subscribe()
-            }
         }
     }
 

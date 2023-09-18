@@ -3,6 +3,7 @@ package service
 import com.sedmelluq.discord.lavaplayer.track.AudioTrack
 import discord4j.core.event.domain.message.MessageCreateEvent
 import discord4j.core.`object`.entity.Message
+import discord4j.core.spec.legacy.LegacyEmbedCreateSpec
 import discord4j.rest.util.Color
 import manager.GuildManager
 import reactor.core.publisher.Mono
@@ -64,15 +65,68 @@ class MessageService {
     ): Mono<Message> {
         return event.message.channel.flatMap { channel ->
             channel.createEmbed { embedCreateSpec ->
-                title?.let { embedCreateSpec.setTitle(it) }
-                description?.let { embedCreateSpec.setDescription(it) }
-                thumbnail?.let { embedCreateSpec.setThumbnail(it) }
-                footer?.let { embedCreateSpec.setFooter(it, null) }
-                color?.let { embedCreateSpec.setColor(it) }
-                timestamp?.let { embedCreateSpec.setTimestamp(it) }
-                image?.let { embedCreateSpec.setImage(it) }
-                author?.let { embedCreateSpec.setAuthor(it, null, null) }
+                applyEmbedProperties(
+                    embedCreateSpec,
+                    title,
+                    description,
+                    thumbnail,
+                    footer,
+                    color,
+                    timestamp,
+                    image,
+                    author
+                )
             }
         }
     }
+
+    fun editEmbedMessage(
+        message: Message,
+        title: String? = null,
+        description: String? = null,
+        thumbnail: String? = null,
+        footer: String? = null,
+        color: Color? = null,
+        timestamp: Instant? = null,
+        image: String? = null,
+        author: String? = null,
+    ): Mono<Message> {
+        return message.edit { messageEditSpec ->
+            messageEditSpec.setEmbed { embedCreateSpec ->
+                applyEmbedProperties(
+                    embedCreateSpec,
+                    title,
+                    description,
+                    thumbnail,
+                    footer,
+                    color,
+                    timestamp,
+                    image,
+                    author
+                )
+            }
+        }
+    }
+
+    private fun applyEmbedProperties(
+        embedCreateSpec: LegacyEmbedCreateSpec,
+        title: String?,
+        description: String?,
+        thumbnail: String?,
+        footer: String?,
+        color: Color?,
+        timestamp: Instant?,
+        image: String?,
+        author: String?
+    ) {
+        title?.let { embedCreateSpec.setTitle(it) }
+        description?.let { embedCreateSpec.setDescription(it) }
+        thumbnail?.let { embedCreateSpec.setThumbnail(it) }
+        footer?.let { embedCreateSpec.setFooter(it, null) }
+        color?.let { embedCreateSpec.setColor(it) }
+        timestamp?.let { embedCreateSpec.setTimestamp(it) }
+        image?.let { embedCreateSpec.setImage(it) }
+        author?.let { embedCreateSpec.setAuthor(it, null, null) }
+    }
+
 }
