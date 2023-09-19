@@ -65,6 +65,8 @@ class MusicService {
     fun play(event: MessageCreateEvent): Mono<Void?> {
         val guildId = event.guildId.orElse(null) ?: return Mono.empty()
         val musicManager = getGuildMusicManager(guildId)
+        val denialGifLink =
+            "https://tenor.com/view/%D0%BF%D0%BE%D1%85%D1%83%D0%B9-death-error-gif-20558982"
 
         musicManager.scheduler.currentEvent = event
 
@@ -73,9 +75,26 @@ class MusicService {
                 voiceChannelService.checkUserInVoiceChannelWithBot(event)
                     .flatMap { userInVoice ->
                         if (userInVoice) {
-
+                            Mono.justOrEmpty(event.message.content)
+                                .map { content -> content.split(" ") }
+                                .doOnNext { command ->
+                                    if (command.size > 1) {
+                                        val input = command.subList(1, command.size).joinToString(" ")
+                                        if (!input.matches(Regex("^(https?|ftp)://[^\\s/$.?#].\\S*$"))) {
+                                            val youtubeSearchResult = youTubeImpl.searchYoutube(input)
+                                            if (youtubeSearchResult != null) {
+                                                playerManager.loadItem(youtubeSearchResult, musicManager.scheduler)
+                                            }
+                                        } else {
+                                            playerManager.loadItem(input, musicManager.scheduler)
+                                        }
+                                        musicManager.player.addListener(musicManager.scheduler)
+                                    }
+                                }.then()
+                        } else {
+                            messageService.sendMessage(event, denialGifLink)
                         }
-                        }
+                    }
             } else {
                 voiceChannelService.join(event)
                     .then(
