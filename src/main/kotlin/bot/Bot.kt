@@ -5,7 +5,7 @@ import bot.command.godmode.GodmodeEnableCommand
 import bot.command.help_message.HelpCommand
 import bot.command.help_message.PingCommand
 import bot.command.music.change_state_player.PlayCommand
-import bot.command.music.change_state_player.PlaylistSeregaCommand
+import bot.command.music.change_state_player.PlayLinkCommand
 import bot.command.music.change_state_player.StopCommand
 import bot.command.music.information.QueueCommand
 import bot.command.music.information.WhatPlayingCommand
@@ -14,8 +14,8 @@ import bot.command.music.loop.PlaylistLoopCommand
 import bot.command.music.switch_tracks.JumpCommand
 import bot.command.music.switch_tracks.NextTrackCommand
 import bot.command.music.switch_tracks.ShuffleCommand
-import di.remote.RemoteComponent
 import di.remote.DaggerRemoteComponent
+import di.remote.RemoteComponent
 import di.remote.RemoteModule
 import di.service.DaggerServiceComponent
 import di.service.ServiceComponent
@@ -47,7 +47,7 @@ class Bot(id: String, private val apiKeyYouTube: String) {
 
         commands["play"] = PlayCommand()
 
-        commands["серега"] = PlaylistSeregaCommand()
+        commands["серега"] = PlayLinkCommand(SEREGA_PIRAT)
 
         commands["папочка здесь"] = GodmodeEnableCommand()
 
@@ -83,5 +83,9 @@ class Bot(id: String, private val apiKeyYouTube: String) {
 
         lateinit var remoteComponent: RemoteComponent
             private set
+
+        const val SEREGA_PIRAT = "https://www.youtube.com/watch?v=KhX3T_NYndo&list=PLaxxU3ZabospOFUVjRWofD-mYOQfCxpzw"
+
+        const val prefix = "!"
     }
 }

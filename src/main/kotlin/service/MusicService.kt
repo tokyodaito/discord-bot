@@ -17,19 +17,48 @@ class MusicService {
         val guildId = event.guildId.orElse(null) ?: return Mono.empty<Void>()
         val musicManager = getGuildMusicManager(guildId)
         musicManager.scheduler.currentEvent = event
+        val denialGifLink =
+            "https://tenor.com/view/%D0%BF%D0%BE%D1%85%D1%83%D0%B9-death-error-gif-20558982"
 
-        return voiceChannelService.join(event)
-            .then(
-                Mono.fromRunnable<Void> {
-                    try {
-                        playerManager.loadItem(link, musicManager.scheduler)
-                        musicManager.player.addListener(musicManager.scheduler)
-                    } catch (e: Exception) {
-                        println("An error occurred: ${e.message}")
-                        e.printStackTrace()
+        return voiceChannelService.checkBotInVoiceChannel(event).flatMap { botInServer ->
+            if (botInServer) {
+                voiceChannelService.checkUserInVoiceChannelWithBot(event)
+                    .flatMap { userInVoice ->
+                        if (userInVoice) {
+                            Mono.fromRunnable<Void> {
+                                try {
+                                    playerManager.loadItem(link, musicManager.scheduler)
+                                    musicManager.player.addListener(musicManager.scheduler)
+                                } catch (e: Exception) {
+                                    println("An error occurred: ${e.message}")
+                                    e.printStackTrace()
+                                }
+                            }
+                        } else {
+                            messageService.sendMessage(event, denialGifLink)
+                        }
                     }
-                }
-            )
+            } else {
+                voiceChannelService.checkUserInVoiceChannel(event)
+                    .flatMap { userInVoice ->
+                        if (userInVoice) {
+                            voiceChannelService.join(event).then(
+                                Mono.fromRunnable<Void> {
+                                    try {
+                                        playerManager.loadItem(link, musicManager.scheduler)
+                                        musicManager.player.addListener(musicManager.scheduler)
+                                    } catch (e: Exception) {
+                                        println("An error occurred: ${e.message}")
+                                        e.printStackTrace()
+                                    }
+                                }
+                            )
+                        } else {
+                            messageService.sendMessage(event, denialGifLink)
+                        }
+                    }
+            }
+        }
     }
 
 
@@ -39,26 +68,39 @@ class MusicService {
 
         musicManager.scheduler.currentEvent = event
 
-        return voiceChannelService.join(event)
-            .then(
-                Mono.justOrEmpty(event.message.content)
-                    .map { content -> content.split(" ") }
-                    .doOnNext { command ->
-                        if (command.size > 1) {
-                            val input = command.subList(1, command.size).joinToString(" ")
-                            if (!input.matches(Regex("^(https?|ftp)://[^\\s/$.?#].\\S*$"))) {
-                                val youtubeSearchResult = youTubeImpl.searchYoutube(input)
-                                if (youtubeSearchResult != null) {
-                                    playerManager.loadItem(youtubeSearchResult, musicManager.scheduler)
-                                }
-                            } else {
-                                playerManager.loadItem(input, musicManager.scheduler)
-                            }
-                            musicManager.player.addListener(musicManager.scheduler)
+        return voiceChannelService.checkBotInVoiceChannel(event).flatMap { botInServer ->
+            if (botInServer) {
+                voiceChannelService.checkUserInVoiceChannelWithBot(event)
+                    .flatMap { userInVoice ->
+                        if (userInVoice) {
+
                         }
-                    }
-            )
-            .then()
+                        }
+            } else {
+                voiceChannelService.join(event)
+                    .then(
+                        voiceChannelService.checkUserInVoiceChannelWithBot(event).flatMap {
+                            Mono.justOrEmpty(event.message.content)
+                                .map { content -> content.split(" ") }
+                                .doOnNext { command ->
+                                    if (command.size > 1) {
+                                        val input = command.subList(1, command.size).joinToString(" ")
+                                        if (!input.matches(Regex("^(https?|ftp)://[^\\s/$.?#].\\S*$"))) {
+                                            val youtubeSearchResult = youTubeImpl.searchYoutube(input)
+                                            if (youtubeSearchResult != null) {
+                                                playerManager.loadItem(youtubeSearchResult, musicManager.scheduler)
+                                            }
+                                        } else {
+                                            playerManager.loadItem(input, musicManager.scheduler)
+                                        }
+                                        musicManager.player.addListener(musicManager.scheduler)
+                                    }
+                                }
+                        }
+                    )
+                    .then()
+            }
+        }
     }
 
 
@@ -95,9 +137,9 @@ class MusicService {
 
         val gifLink = "https://media.discordapp.net/attachments/816984360665219113/959247739575750717/bylling.gif"
         val denialGifLink =
-            "https://tenor.com/view/%D0%BF%D0%BE%D1%88%C3%AB%D0%BB%D0%BD%D0%B0%D1%85%D1%83%D0%B9-gif-22853707"
+            "https://tenor.com/view/%D0%BF%D0%BE%D1%85%D1%83%D0%B9-death-error-gif-20558982"
 
-        return voiceChannelService.checkUser(event).flatMap { isInSameChannel ->
+        return voiceChannelService.checkUserInVoiceChannelWithBot(event).flatMap { isInSameChannel ->
             if (isInSameChannel) {
                 Mono.justOrEmpty(event.member.orElse(null)).flatMap { member ->
                     Mono.justOrEmpty(member?.voiceState?.block()).flatMap { voiceState ->
