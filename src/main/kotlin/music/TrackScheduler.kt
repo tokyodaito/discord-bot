@@ -14,7 +14,7 @@ import java.util.concurrent.BlockingQueue
 import java.util.concurrent.LinkedBlockingQueue
 
 class TrackScheduler(
-    val player: AudioPlayer,
+    private val player: AudioPlayer,
 ) : AudioLoadResultHandler, AudioEventAdapter() {
     private val messageService = MessageService()
 

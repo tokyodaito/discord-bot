@@ -16,7 +16,6 @@ internal class Observers(private val commands: MutableMap<String, Command>) {
     private val messageService = MessageService()
 
     internal fun setEventObserver(client: GatewayDiscordClient) {
-
         observeMessageEvents(client)
         observeVoiceEvents(client)
     }
@@ -31,7 +30,7 @@ internal class Observers(private val commands: MutableMap<String, Command>) {
                     Mono.empty()
                 } else {
                     Flux.fromIterable(commands.entries)
-                        .filter { entry -> content.startsWith('!' + entry.key, ignoreCase = true) }
+                        .filter { entry -> content.startsWith(Bot.prefix + entry.key, ignoreCase = true) }
                         .flatMap { entry -> entry.value.execute(event) }.next()
                 }
             }
