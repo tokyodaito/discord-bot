@@ -1,9 +1,9 @@
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
-import org.jetbrains.kotlin.kapt3.base.Kapt.kapt
 
 plugins {
     kotlin("jvm") version "1.7.10"
     kotlin("kapt") version "1.7.10"
+    id("idea")
     application
 }
 
@@ -16,6 +16,12 @@ repositories {
 
     maven {
         setUrl("https://jitpack.io")
+    }
+}
+
+idea {
+    module {
+        sourceDirs.plusAssign(file("$projectDir/build/generated/source/kapt/main"))
     }
 }
 

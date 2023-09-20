@@ -131,7 +131,10 @@ class TrackScheduler(
             val trackToPlay = if (loop) track.makeClone() else track
             player.startTrack(trackToPlay, false)
             currentEvent?.let { event ->
-                messageService.sendInformationAboutSong(event, track, loop, playlistLoop, false).subscribe()
+                if (firstSong)
+                    messageService.sendNewInformationAboutSong(event, track, loop, playlistLoop, false)
+                else
+                    messageService.sendInformationAboutSong(event, track, loop, playlistLoop, false).subscribe()
             }
         }
     }
