@@ -26,7 +26,7 @@ internal class Observers(private val commands: MutableMap<String, Command>) {
     private fun observeMessageEvents(client: GatewayDiscordClient) {
         client.eventDispatcher.on(MessageCreateEvent::class.java).flatMap { event ->
             val guildId = event?.guildId?.orElse(null) ?: return@flatMap Mono.empty()
-            val musicManager = GuildManager.getGuildMusicManager(guildId)
+            val musicManager = getGuildMusicManager(guildId)
 
             Mono.just(event.message.content).flatMap { content ->
                 if (musicManager.godMode && event.message.author.orElse(null)?.id?.asString() != GodmodeService.godModeUserId) {
@@ -74,7 +74,14 @@ internal class Observers(private val commands: MutableMap<String, Command>) {
                     .defaultIfEmpty(false)
                     .flatMap { botInVoice ->
                         if (botInVoice) {
-                            Mono.fromCallable { getGuildMusicManager(event.current.guildId).scheduler.clearQueue() }
+                            Mono.fromCallable {
+                                getGuildMusicManager(event.current.guildId).player.removeListener(
+                                    getGuildMusicManager(
+                                        event.current.guildId
+                                    ).scheduler
+                                )
+                                getGuildMusicManager(event.current.guildId).scheduler.clearQueue()
+                            }
                         } else {
                             Mono.empty()
                         }
@@ -121,6 +128,11 @@ internal class Observers(private val commands: MutableMap<String, Command>) {
         return if (voiceStates.size == 1 && voiceStates[0].userId == selfId) {
             println("Only bot is present in the voice channel. Disconnecting and clearing the queue.")
             channel.sendDisconnectVoiceState().then(Mono.fromRunnable<Void?> {
+                getGuildMusicManager(guildId).player.removeListener(
+                    getGuildMusicManager(
+                        guildId
+                    ).scheduler
+                )
                 getGuildMusicManager(guildId).scheduler.clearQueue()
             })
         } else {
