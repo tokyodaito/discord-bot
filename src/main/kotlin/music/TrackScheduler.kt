@@ -147,13 +147,23 @@ class TrackScheduler(
         return fullTrackList
     }
 
-    fun deleteTrack(index: Int) {
-        if (index >= 0 && index < queue.size) {
-            val list = ArrayList(queue)
-            list.removeAt(index)
-            queue = LinkedBlockingQueue(list)
+    fun deleteTrack(index: Int): Boolean {
+        val indexPlaceCurrentTrack = 1
+        val indexPlaceNotNullForUser = 1
+
+        return if (index == 1) {
+            nextTrack()
+            true
         } else {
-            println("Index out of bounds")
+            if (index >= 0 && index - indexPlaceCurrentTrack - indexPlaceNotNullForUser < queue.size) {
+                val list = ArrayList(queue)
+                list.removeAt(index - indexPlaceCurrentTrack - indexPlaceNotNullForUser)
+                queue = LinkedBlockingQueue(list)
+                true
+            } else {
+                println("Index out of bounds")
+                false
+            }
         }
     }
 

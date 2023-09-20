@@ -22,8 +22,22 @@ repositories {
 idea {
     module {
         sourceDirs.plusAssign(file("$projectDir/build/generated/source/kapt/main"))
+        generatedSourceDirs.plusAssign(file("$projectDir/build/generated/source/kapt/main"))
     }
 }
+
+sourceSets {
+    main {
+        java {
+            srcDir("$buildDir/generated/source/kapt/main")
+        }
+    }
+}
+
+kapt {
+    includeCompileClasspath = false
+}
+
 
 dependencies {
     testImplementation(kotlin("test"))

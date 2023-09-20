@@ -128,7 +128,6 @@ class MusicService {
             }
         }.onErrorResume {
             println("Error play: $it")
-            musicManager.scheduler.clearQueue()
             Mono.empty()
         }
     }
@@ -176,6 +175,7 @@ class MusicService {
                         Mono.justOrEmpty(voiceState?.channel?.block()).doOnNext { channel ->
                             channel?.let {
                                 voiceChannelService.disconnect(event).subscribe()
+                                musicManager.player.removeListener(musicManager.scheduler)
                                 musicManager.scheduler.clearQueue()
                             }
                         }
@@ -288,6 +288,24 @@ class MusicService {
             musicManager.scheduler.loop = false
             musicManager.scheduler.nextTrack()
             true
+        }
+    }
+
+    fun deleteTrack(event: MessageCreateEvent): Mono<Void?> {
+        val musicManager = getGuildMusicManager(event)
+
+        return run {
+            val args = event.message.content.split(" ")
+            if (args.size > 1) {
+                val index = args[1].toIntOrNull()
+                if (index != null && musicManager.scheduler.deleteTrack(index)) {
+                    messageService.sendMessage(event, "Трек удален")
+                } else {
+                    messageService.sendMessage(event, "Неверный индекс")
+                }
+            } else {
+                messageService.sendMessage(event, "Неверный индекс")
+            }
         }
     }
 }

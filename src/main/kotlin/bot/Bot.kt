@@ -4,6 +4,7 @@ import bot.command.godmode.GodmodeDisableCommand
 import bot.command.godmode.GodmodeEnableCommand
 import bot.command.help_message.HelpCommand
 import bot.command.help_message.PingCommand
+import bot.command.music.change_state_player.DeleteCommand
 import bot.command.music.change_state_player.PlayCommand
 import bot.command.music.change_state_player.PlayLinkCommand
 import bot.command.music.change_state_player.StopCommand
@@ -70,6 +71,8 @@ class Bot(id: String, private val apiKeyYouTube: String) {
         commands["playlistloop"] = PlaylistLoopCommand()
 
         commands["jump"] = JumpCommand()
+
+        commands["delete"] = DeleteCommand()
     }
 
     private fun initDaggerComponents() {
