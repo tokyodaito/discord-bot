@@ -5,7 +5,6 @@ import bot.Command
 import discord4j.core.event.domain.message.MessageCreateEvent
 import manager.GuildManager
 import reactor.core.publisher.Mono
-import service.MessageService
 
 class ShuffleCommand : Command {
     private val messageService = Bot.serviceComponent.getMessageService()
@@ -16,6 +15,10 @@ class ShuffleCommand : Command {
 
         return messageService.sendMessage(event, "Очередь перемешана").let {
             Mono.fromCallable { musicManager.scheduler.shuffleQueue() }.then(it)
+                .onErrorResume {
+                    println("Error shuffleQueue: $it")
+                    Mono.empty()
+                }
         }
     }
 }

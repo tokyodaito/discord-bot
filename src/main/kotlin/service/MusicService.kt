@@ -58,6 +58,9 @@ class MusicService {
                         }
                     }
             }
+        }.onErrorResume {
+            println("Error play: $it")
+            Mono.empty()
         }
     }
 
@@ -96,29 +99,37 @@ class MusicService {
                         }
                     }
             } else {
-                voiceChannelService.join(event)
-                    .then(
-                        voiceChannelService.checkUserInVoiceChannelWithBot(event).flatMap {
-                            Mono.justOrEmpty(event.message.content)
-                                .map { content -> content.split(" ") }
-                                .doOnNext { command ->
-                                    if (command.size > 1) {
-                                        val input = command.subList(1, command.size).joinToString(" ")
-                                        if (!input.matches(Regex("^(https?|ftp)://[^\\s/$.?#].\\S*$"))) {
-                                            val youtubeSearchResult = youTubeImpl.searchYoutube(input)
-                                            if (youtubeSearchResult != null) {
-                                                playerManager.loadItem(youtubeSearchResult, musicManager.scheduler)
+                voiceChannelService.checkUserInVoiceChannel(event).flatMap { userInVoice ->
+                    if (userInVoice) {
+                        voiceChannelService.join(event)
+                            .then(
+                                Mono.justOrEmpty(event.message.content)
+                                    .map { content -> content.split(" ") }
+                                    .doOnNext { command ->
+                                        if (command.size > 1) {
+                                            val input = command.subList(1, command.size).joinToString(" ")
+                                            if (!input.matches(Regex("^(https?|ftp)://[^\\s/$.?#].\\S*$"))) {
+                                                val youtubeSearchResult = youTubeImpl.searchYoutube(input)
+                                                if (youtubeSearchResult != null) {
+                                                    playerManager.loadItem(youtubeSearchResult, musicManager.scheduler)
+                                                }
+                                            } else {
+                                                playerManager.loadItem(input, musicManager.scheduler)
                                             }
-                                        } else {
-                                            playerManager.loadItem(input, musicManager.scheduler)
+                                            musicManager.player.addListener(musicManager.scheduler)
                                         }
-                                        musicManager.player.addListener(musicManager.scheduler)
                                     }
-                                }
-                        }
-                    )
-                    .then()
+                            )
+                            .then()
+                    } else {
+                        messageService.sendMessage(event, denialGifLink)
+                    }
+                }
             }
+        }.onErrorResume {
+            println("Error play: $it")
+            musicManager.scheduler.clearQueue()
+            Mono.empty()
         }
     }
 
@@ -180,6 +191,9 @@ class MusicService {
             } else {
                 messageService.sendMessage(event, denialGifLink)
             }
+        }.onErrorResume {
+            println("Error stopPlaying: $it")
+            Mono.empty()
         }
     }
 
@@ -259,6 +273,9 @@ class MusicService {
                     Mono.empty()
                 }
             }
+        }.onErrorResume {
+            println("Error showTrackList: $it")
+            Mono.empty()
         }
     }
 
