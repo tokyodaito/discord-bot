@@ -58,6 +58,9 @@ class MusicService {
                         }
                     }
             }
+        }.onErrorResume {
+            println("Error play: $it")
+            Mono.empty()
         }
     }
 
@@ -65,6 +68,8 @@ class MusicService {
     fun play(event: MessageCreateEvent): Mono<Void?> {
         val guildId = event.guildId.orElse(null) ?: return Mono.empty()
         val musicManager = getGuildMusicManager(guildId)
+        val denialGifLink =
+            "https://tenor.com/view/%D0%BF%D0%BE%D1%85%D1%83%D0%B9-death-error-gif-20558982"
 
         musicManager.scheduler.currentEvent = event
 
@@ -73,13 +78,6 @@ class MusicService {
                 voiceChannelService.checkUserInVoiceChannelWithBot(event)
                     .flatMap { userInVoice ->
                         if (userInVoice) {
-
-                        }
-                        }
-            } else {
-                voiceChannelService.join(event)
-                    .then(
-                        voiceChannelService.checkUserInVoiceChannelWithBot(event).flatMap {
                             Mono.justOrEmpty(event.message.content)
                                 .map { content -> content.split(" ") }
                                 .doOnNext { command ->
@@ -95,11 +93,43 @@ class MusicService {
                                         }
                                         musicManager.player.addListener(musicManager.scheduler)
                                     }
-                                }
+                                }.then()
+                        } else {
+                            messageService.sendMessage(event, denialGifLink)
                         }
-                    )
-                    .then()
+                    }
+            } else {
+                voiceChannelService.checkUserInVoiceChannel(event).flatMap { userInVoice ->
+                    if (userInVoice) {
+                        voiceChannelService.join(event)
+                            .then(
+                                Mono.justOrEmpty(event.message.content)
+                                    .map { content -> content.split(" ") }
+                                    .doOnNext { command ->
+                                        if (command.size > 1) {
+                                            val input = command.subList(1, command.size).joinToString(" ")
+                                            if (!input.matches(Regex("^(https?|ftp)://[^\\s/$.?#].\\S*$"))) {
+                                                val youtubeSearchResult = youTubeImpl.searchYoutube(input)
+                                                if (youtubeSearchResult != null) {
+                                                    playerManager.loadItem(youtubeSearchResult, musicManager.scheduler)
+                                                }
+                                            } else {
+                                                playerManager.loadItem(input, musicManager.scheduler)
+                                            }
+                                            musicManager.player.addListener(musicManager.scheduler)
+                                        }
+                                    }
+                            )
+                            .then()
+                    } else {
+                        messageService.sendMessage(event, denialGifLink)
+                    }
+                }
             }
+        }.onErrorResume {
+            println("Error play: $it")
+            musicManager.scheduler.clearQueue()
+            Mono.empty()
         }
     }
 
@@ -161,6 +191,9 @@ class MusicService {
             } else {
                 messageService.sendMessage(event, denialGifLink)
             }
+        }.onErrorResume {
+            println("Error stopPlaying: $it")
+            Mono.empty()
         }
     }
 
@@ -240,7 +273,21 @@ class MusicService {
                     Mono.empty()
                 }
             }
+        }.onErrorResume {
+            println("Error showTrackList: $it")
+            Mono.empty()
         }
     }
 
+    fun nextTrack(event: MessageCreateEvent): Boolean {
+        val musicManager = getGuildMusicManager(event)
+
+        return if (musicManager.scheduler.getFullTrackList().size <= 1) {
+            false
+        } else {
+            musicManager.scheduler.loop = false
+            musicManager.scheduler.nextTrack()
+            true
+        }
+    }
 }

@@ -1,5 +1,6 @@
 package music
 
+import bot.Bot
 import com.sedmelluq.discord.lavaplayer.player.AudioLoadResultHandler
 import com.sedmelluq.discord.lavaplayer.player.AudioPlayer
 import com.sedmelluq.discord.lavaplayer.player.event.AudioEventAdapter
@@ -9,30 +10,28 @@ import com.sedmelluq.discord.lavaplayer.track.AudioTrack
 import com.sedmelluq.discord.lavaplayer.track.AudioTrackEndReason
 import discord4j.core.event.domain.message.MessageCreateEvent
 import discord4j.core.`object`.entity.Message
-import service.MessageService
 import java.util.concurrent.BlockingQueue
 import java.util.concurrent.LinkedBlockingQueue
 
 class TrackScheduler(
     private val player: AudioPlayer,
 ) : AudioLoadResultHandler, AudioEventAdapter() {
-    private val messageService = MessageService()
+    private val messageService = Bot.serviceComponent.getMessageService()
 
     private var queue: BlockingQueue<AudioTrack> = LinkedBlockingQueue()
 
-    @Volatile
     var loop: Boolean = false
 
-    @Volatile
     var currentTrack: AudioTrack? = null
 
     var currentEvent: MessageCreateEvent? = null
 
-    @Volatile
     var playlistLoop: Boolean = false
 
-    @Volatile
+    var firstSong: Boolean = true
+
     var lastMessage: Message? = null
+    val lastMessageLock = Any()
 
     private var initialPlaylist: List<AudioTrack> = listOf()
 
@@ -47,6 +46,12 @@ class TrackScheduler(
             when {
                 player.startTrack(trackNotNull, true) -> {
                     currentTrack = trackNotNull
+                    if (firstSong) {
+                        messageService.sendNewInformationAboutSong(event, trackNotNull, loop, playlistLoop, false)
+                            .subscribe()
+                    } else {
+                        return
+                    }
                 }
 
                 !queue.contains(trackNotNull) -> {
@@ -73,16 +78,24 @@ class TrackScheduler(
 
     override fun noMatches() {
         println("No matches found for the given input")
+        currentEvent?.let {
+            Bot.serviceComponent.getVoiceChannelService()
+                .disconnect(it)
+                .then(messageService.sendMessage(it, "Ошибка загрузки трека"))
+                .subscribe()
+        }
+        clearQueue()
     }
 
     override fun loadFailed(exception: FriendlyException) {
         println("Failed to load track: ${exception.message}")
-    }
-
-    override fun onTrackStart(player: AudioPlayer?, track: AudioTrack?) {
-        currentEvent?.let { event ->
-            track?.let { messageService.sendInformationAboutSong(event, it, loop, playlistLoop, false).subscribe() }
+        currentEvent?.let {
+            Bot.serviceComponent.getVoiceChannelService()
+                .disconnect(it)
+                .then(messageService.sendMessage(it, "Ошибка загрузки трека"))
+                .subscribe()
         }
+        clearQueue()
     }
 
     override fun onTrackEnd(player: AudioPlayer?, track: AudioTrack?, endReason: AudioTrackEndReason?) {
@@ -103,18 +116,23 @@ class TrackScheduler(
 
                 else -> {
                     loop = false
+                    firstSong = true
                 }
             }
         }
     }
 
     fun nextTrack() {
+        println("nextTrack")
         if (!loop) {
             currentTrack = queue.poll()
         }
         currentTrack?.let { track ->
             val trackToPlay = if (loop) track.makeClone() else track
             player.startTrack(trackToPlay, false)
+            currentEvent?.let { event ->
+                messageService.sendInformationAboutSong(event, track, loop, playlistLoop, false).subscribe()
+            }
         }
     }
 
@@ -155,8 +173,11 @@ class TrackScheduler(
     }
 
     fun clearQueue() {
-        player.stopTrack()
         currentTrack = null
+        firstSong = true
+        loop = false
+        playlistLoop = false
+        player.stopTrack()
         queue.clear()
     }
 }

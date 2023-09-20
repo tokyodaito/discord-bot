@@ -7,10 +7,13 @@ import discord4j.core.event.domain.message.MessageCreateEvent
 import discord4j.core.`object`.VoiceState
 import discord4j.core.`object`.entity.channel.VoiceChannel
 import manager.GuildManager
+import manager.GuildManager.getGuildMusicManager
 import reactor.core.publisher.Flux
 import reactor.core.publisher.Mono
+import reactor.util.retry.Retry
 import service.GodmodeService
 import service.MessageService
+import java.time.Duration
 
 internal class Observers(private val commands: MutableMap<String, Command>) {
     private val messageService = MessageService()
@@ -32,8 +35,15 @@ internal class Observers(private val commands: MutableMap<String, Command>) {
                     Flux.fromIterable(commands.entries)
                         .filter { entry -> content.startsWith(Bot.prefix + entry.key, ignoreCase = true) }
                         .flatMap { entry -> entry.value.execute(event) }.next()
+                        .onErrorResume {
+                            println("Error observeMessageEvents: $it")
+                            Mono.empty()
+                        }
                 }
             }
+        }.onErrorResume {
+            println("Error observeMessageEvents: $it")
+            Mono.empty()
         }.subscribe()
     }
 
@@ -47,6 +57,28 @@ internal class Observers(private val commands: MutableMap<String, Command>) {
             if (oldChannelId == null && currentChannelId == null) {
                 println("No channel state change")
                 return@flatMap Mono.empty<Void>()
+            }
+
+            if (oldChannelId != null && currentChannelId == null) {
+                event.client.self
+                    .flatMap { self ->
+                        client.getGuildById(event.current.guildId).flatMap { guild ->
+                            guild.getMemberById(self.id)
+                                .flatMap { member ->
+                                    member.voiceState.map { voiceState ->
+                                        voiceState.channelId.isPresent
+                                    }
+                                }
+                        }
+                    }
+                    .defaultIfEmpty(false)
+                    .flatMap { botInVoice ->
+                        if (botInVoice) {
+                            Mono.fromCallable { getGuildMusicManager(event.current.guildId).scheduler.clearQueue() }
+                        } else {
+                            Mono.empty()
+                        }
+                    }
             }
 
             println("Old channel ID: $oldChannelId, Current channel ID: $currentChannelId")
@@ -76,6 +108,9 @@ internal class Observers(private val commands: MutableMap<String, Command>) {
         }.doOnError { error ->
             println("An error occurred: ${error.message}")
             error.printStackTrace()
+        }.onErrorResume {
+            println("Error observeVoiceEvents: $it")
+            Mono.empty()
         }.subscribe()
     }
 
@@ -86,17 +121,15 @@ internal class Observers(private val commands: MutableMap<String, Command>) {
         return if (voiceStates.size == 1 && voiceStates[0].userId == selfId) {
             println("Only bot is present in the voice channel. Disconnecting and clearing the queue.")
             channel.sendDisconnectVoiceState().then(Mono.fromRunnable<Void?> {
-                GuildManager.getGuildMusicManager(guildId).scheduler.clearQueue()
-            }.flatMap {
-                GuildManager.getGuildMusicManager(guildId).scheduler.currentEvent?.let { it1 ->
-                    messageService.sendMessage(
-                        it1, "Воспроизведение остановлено"
-                    )
-                }
+                getGuildMusicManager(guildId).scheduler.clearQueue()
             })
         } else {
             println("More than one member is present in the voice channel.")
             Mono.empty()
-        }
+        }.retryWhen(Retry.backoff(3, Duration.ofSeconds(5)))
+            .onErrorResume {
+                println("Error handleVoiceState: $it")
+                Mono.empty()
+            }
     }
 }

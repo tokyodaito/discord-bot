@@ -5,7 +5,6 @@ import bot.Command
 import discord4j.core.event.domain.message.MessageCreateEvent
 import manager.GuildManager
 import reactor.core.publisher.Mono
-import service.MessageService
 
 class WhatPlayingCommand : Command {
     private val messageService = Bot.serviceComponent.getMessageService()
@@ -15,12 +14,12 @@ class WhatPlayingCommand : Command {
         val musicManager = GuildManager.getGuildMusicManager(guildId)
 
         return musicManager.scheduler.currentTrack?.let { track ->
-            messageService.sendInformationAboutSong(
+            messageService.sendNewInformationAboutSong(
                 event,
                 track,
-                loop = false,
-                loopPlaylist = false,
-                stayInQueueStatus = musicManager.scheduler.loop
+                loop = musicManager.scheduler.loop,
+                loopPlaylist = musicManager.scheduler.playlistLoop,
+                stayInQueueStatus = false
             ).then()
         }
     }

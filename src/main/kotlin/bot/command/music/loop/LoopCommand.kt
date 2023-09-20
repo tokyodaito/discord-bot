@@ -5,7 +5,6 @@ import bot.Command
 import discord4j.core.event.domain.message.MessageCreateEvent
 import manager.GuildManager
 import reactor.core.publisher.Mono
-import service.MessageService
 
 class LoopCommand : Command {
     private val messageService = Bot.serviceComponent.getMessageService()
@@ -16,10 +15,10 @@ class LoopCommand : Command {
         musicManager.scheduler.loop = !musicManager.scheduler.loop
 
         return if (musicManager.scheduler.currentTrack != null) {
-            Mono.fromCallable {}.flatMap {
+            Mono.fromCallable {
                 if (musicManager.scheduler.loop) messageService.sendMessage(event, "Повтор включен")
                 else messageService.sendMessage(event, "Повтор выключен")
-            }.flatMap {
+            }.then(
                 messageService.sendInformationAboutSong(
                     event,
                     musicManager.scheduler.currentTrack!!,
@@ -27,7 +26,7 @@ class LoopCommand : Command {
                     loopPlaylist = false,
                     stayInQueueStatus = false
                 )
-            }
+            )
         } else {
             Mono.empty()
         }
