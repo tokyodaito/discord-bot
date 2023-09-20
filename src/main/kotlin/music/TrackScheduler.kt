@@ -47,7 +47,7 @@ class TrackScheduler(
                 player.startTrack(trackNotNull, true) -> {
                     currentTrack = trackNotNull
                     if (firstSong) {
-                        messageService.sendInformationAboutSong(event, trackNotNull, loop, playlistLoop, false)
+                        messageService.sendNewInformationAboutSong(event, trackNotNull, loop, playlistLoop, false)
                             .subscribe()
                     } else {
                         return

@@ -21,7 +21,7 @@ class MessageService {
             }
     }
 
-    fun sendInformationAboutSong(
+    fun sendNewInformationAboutSong(
         event: MessageCreateEvent, track: AudioTrack, loop: Boolean, loopPlaylist: Boolean, stayInQueueStatus: Boolean
     ): Mono<Void> {
         val musicManager = GuildManager.getGuildMusicManager(event)
@@ -56,10 +56,63 @@ class MessageService {
                 Mono.empty<Void>()
             }
         }.onErrorResume {
-                println("Error sendMessage: $it")
-                Mono.empty()
-            })
+            println("Error sendMessage: $it")
+            Mono.empty()
+        })
     }
+
+    fun sendInformationAboutSong(
+        event: MessageCreateEvent, track: AudioTrack, loop: Boolean, loopPlaylist: Boolean, stayInQueueStatus: Boolean
+    ): Mono<Void> {
+        val musicManager = GuildManager.getGuildMusicManager(event)
+
+        return Mono.defer {
+            synchronized(musicManager.scheduler.lastMessageLock) {
+                val lastMessage = musicManager.scheduler.lastMessage
+                if (lastMessage != null && !stayInQueueStatus) {
+                    editEmbedMessage(
+                        lastMessage,
+                        if (stayInQueueStatus) "Поставлено в очередь" else "Играющий трек",
+                        "[${track.info.title}](https://www.youtube.com/watch?v=${track.info.identifier}) - ${track.info.author}",
+                        track.info.artworkUrl,
+                        "Трек длиной: ${TimeUnit.MILLISECONDS.toMinutes(track.duration)} минут ${
+                            TimeUnit.MILLISECONDS.toSeconds(
+                                track.duration
+                            ) % 60
+                        } секунд \n ${if (loop) "Повтор включен" else ""} \n ${if (loopPlaylist) "Повтор плейлиста включен" else ""}",
+                        null, null, null, null
+                    ).doOnError {
+                        println("Error editing message: $it")
+                    }.then()
+                } else {
+                    event.message.channel.flatMap {
+                        createEmbedMessage(
+                            event,
+                            if (stayInQueueStatus) "Поставлено в очередь" else "Играющий трек",
+                            "[${track.info.title}](https://www.youtube.com/watch?v=${track.info.identifier}) - ${track.info.author}",
+                            track.info.artworkUrl,
+                            "Трек длиной: ${TimeUnit.MILLISECONDS.toMinutes(track.duration)} минут ${
+                                TimeUnit.MILLISECONDS.toSeconds(
+                                    track.duration
+                                ) % 60
+                            } секунд \n ${if (loop) "Повтор включен" else ""} \n ${if (loopPlaylist) "Повтор плейлиста включен" else ""}"
+                        ).flatMap { message ->
+                            synchronized(musicManager.scheduler.lastMessageLock) {
+                                if (!stayInQueueStatus) {
+                                    musicManager.scheduler.lastMessage = message
+                                }
+                            }
+                            Mono.empty<Void>()
+                        }.onErrorResume {
+                            println("Error creating message: $it")
+                            Mono.empty()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
 
     fun createEmbedMessage(
         event: MessageCreateEvent,
@@ -79,9 +132,9 @@ class MessageService {
                 )
             }
         }.retryWhen(Retry.backoff(3, Duration.ofSeconds(5))).onErrorResume {
-                println("Error sendMessage: $it")
-                Mono.empty()
-            }
+            println("Error sendMessage: $it")
+            Mono.empty()
+        }
     }
 
     fun editEmbedMessage(
@@ -102,9 +155,9 @@ class MessageService {
                 )
             }
         }.retryWhen(Retry.backoff(3, Duration.ofSeconds(5))).onErrorResume {
-                println("Error sendMessage: $it")
-                Mono.empty()
-            }
+            println("Error sendMessage: $it")
+            Mono.empty()
+        }
     }
 
     private fun applyEmbedProperties(

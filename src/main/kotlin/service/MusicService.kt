@@ -279,4 +279,15 @@ class MusicService {
         }
     }
 
+    fun nextTrack(event: MessageCreateEvent): Boolean {
+        val musicManager = getGuildMusicManager(event)
+
+        return if (musicManager.scheduler.getFullTrackList().size <= 1) {
+            false
+        } else {
+            musicManager.scheduler.loop = false
+            musicManager.scheduler.nextTrack()
+            true
+        }
+    }
 }

@@ -14,7 +14,7 @@ class WhatPlayingCommand : Command {
         val musicManager = GuildManager.getGuildMusicManager(guildId)
 
         return musicManager.scheduler.currentTrack?.let { track ->
-            messageService.sendInformationAboutSong(
+            messageService.sendNewInformationAboutSong(
                 event,
                 track,
                 loop = musicManager.scheduler.loop,
