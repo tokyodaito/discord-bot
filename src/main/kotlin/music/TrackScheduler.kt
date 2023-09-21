@@ -28,12 +28,13 @@ class TrackScheduler(
 
     var playlistLoop: Boolean = false
 
-    var firstSong: Boolean = true
+    private var firstSong: Boolean = true
 
     var lastMessage: Message? = null
     val lastMessageLock = Any()
 
-    var lastTrack: AudioTrack? = null
+    //  Фикс ошибочной работы onTrackEnd, который отсылает несколько event
+    private var lastTrack: AudioTrack? = null
 
     private var initialPlaylist: List<AudioTrack> = listOf()
 
@@ -149,9 +150,10 @@ class TrackScheduler(
             val trackToPlay = if (loop) track.makeClone() else track
             player.startTrack(trackToPlay, false)
             currentEvent?.let { event ->
-                if (firstSong)
+                if (firstSong) {
+                    firstSong = false
                     messageService.sendNewInformationAboutSong(event, track, loop, playlistLoop, false).subscribe()
-                else
+                } else
                     messageService.sendInformationAboutSong(event, track, loop, playlistLoop, false).subscribe()
             }
         }
