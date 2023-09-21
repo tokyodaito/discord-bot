@@ -1,4 +1,4 @@
-package remote
+package model.remote
 
 import com.google.gson.JsonParser
 import java.net.URL

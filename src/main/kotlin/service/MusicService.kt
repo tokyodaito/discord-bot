@@ -308,4 +308,24 @@ class MusicService {
             }
         }
     }
+
+    fun saveFavorites(event: MessageCreateEvent): Mono<Void?> {
+        val musicManager = getGuildMusicManager(event)
+
+        return Mono.justOrEmpty(event.message.content)
+            .map { content -> content.split(" ") }
+            .doOnNext { command ->
+                if (command.size > 1) {
+                    val input = command.subList(1, command.size).joinToString(" ")
+                    if (!input.matches(Regex("^(https?|ftp)://[^\\s/$.?#].\\S*$"))) {
+                        musicManager.addFavorites(input)
+                    } else {
+                        messageService.sendMessage(event, "Неправильная ссылка")
+                    }
+                }
+            }.onErrorResume {
+                println("Error saveFavorites: $it")
+                Mono.empty()
+            }.then()
+    }
 }

@@ -4,10 +4,7 @@ import bot.command.godmode.GodmodeDisableCommand
 import bot.command.godmode.GodmodeEnableCommand
 import bot.command.help_message.HelpCommand
 import bot.command.help_message.PingCommand
-import bot.command.music.change_state_player.DeleteCommand
-import bot.command.music.change_state_player.PlayCommand
-import bot.command.music.change_state_player.PlayLinkCommand
-import bot.command.music.change_state_player.StopCommand
+import bot.command.music.change_state_player.*
 import bot.command.music.information.QueueCommand
 import bot.command.music.information.WhatPlayingCommand
 import bot.command.music.loop.LoopCommand
@@ -15,6 +12,8 @@ import bot.command.music.loop.PlaylistLoopCommand
 import bot.command.music.switch_tracks.JumpCommand
 import bot.command.music.switch_tracks.NextTrackCommand
 import bot.command.music.switch_tracks.ShuffleCommand
+import di.database.DaggerDatabaseComponent
+import di.database.DatabaseComponent
 import di.remote.DaggerRemoteComponent
 import di.remote.RemoteComponent
 import di.remote.RemoteModule
@@ -78,6 +77,11 @@ class Bot(id: String, private val apiKeyYouTube: String) {
     private fun initDaggerComponents() {
         serviceComponent = DaggerServiceComponent.builder().build()
         remoteComponent = DaggerRemoteComponent.builder().remoteModule(RemoteModule(apiKeyYouTube)).build()
+        databaseComponent = DaggerDatabaseComponent.builder().build()
+    }
+
+    private fun initDatabase() {
+        databaseComponent.getDatabase().initDatabase()
     }
 
     companion object {
@@ -85,6 +89,9 @@ class Bot(id: String, private val apiKeyYouTube: String) {
             private set
 
         lateinit var remoteComponent: RemoteComponent
+            private set
+
+        lateinit var databaseComponent: DatabaseComponent
             private set
 
         const val SEREGA_PIRAT = "https://www.youtube.com/watch?v=KhX3T_NYndo&list=PLaxxU3ZabospOFUVjRWofD-mYOQfCxpzw"
