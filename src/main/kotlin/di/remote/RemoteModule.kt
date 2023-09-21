@@ -2,7 +2,7 @@ package di.remote
 
 import dagger.Module
 import dagger.Provides
-import remote.YouTubeImpl
+import model.remote.YouTubeImpl
 
 @Module
 class RemoteModule(private val apiKeyYouTube: String) {

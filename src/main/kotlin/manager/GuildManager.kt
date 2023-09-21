@@ -1,5 +1,6 @@
 package manager
 
+import bot.Bot
 import com.sedmelluq.discord.lavaplayer.player.AudioPlayerManager
 import com.sedmelluq.discord.lavaplayer.player.DefaultAudioPlayerManager
 import com.sedmelluq.discord.lavaplayer.source.AudioSourceManagers
@@ -20,14 +21,20 @@ object GuildManager {
 
     fun getGuildMusicManager(guildId: Snowflake): GuildMusicManager {
         return musicManagers.computeIfAbsent(guildId) {
-            GuildMusicManager(playerManager)
+            GuildMusicManager(guildId, playerManager).apply {
+                Bot.databaseComponent.getDatabase().loadServerFavorites(guildId.toString())
+                    ?.let { linkList -> favorites.addAll(linkList) }
+            }
         }
     }
 
     fun getGuildMusicManager(event: MessageCreateEvent): GuildMusicManager {
         val guildId = event.guildId.orElse(null)
         return musicManagers.computeIfAbsent(guildId) {
-            GuildMusicManager(playerManager)
+            GuildMusicManager(guildId, playerManager).apply {
+                Bot.databaseComponent.getDatabase().loadServerFavorites(guildId.toString())
+                    ?.let { linkList -> favorites.addAll(linkList) }
+            }
         }
     }
 }

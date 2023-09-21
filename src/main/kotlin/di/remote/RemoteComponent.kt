@@ -1,7 +1,7 @@
 package di.remote
 
 import dagger.Component
-import remote.YouTubeImpl
+import model.remote.YouTubeImpl
 
 @Component(modules = [RemoteModule::class])
 interface RemoteComponent {

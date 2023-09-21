@@ -130,7 +130,11 @@ class TrackScheduler(
                         loop = false
                         firstSong = true
                         currentTrack = null
-                        currentEvent?.let { it1 -> Bot.serviceComponent.getVoiceChannelService().disconnect(it1) }
+                        currentEvent?.let { it1 ->
+                            clearQueue()
+                            player?.removeListener(this)
+                            Bot.serviceComponent.getVoiceChannelService().disconnect(it1).subscribe()
+                        }
                     }
 
                     else -> {
