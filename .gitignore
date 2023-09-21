@@ -114,3 +114,4 @@ gradle-app.setting
 hs_err_pid*
 
 /remove_files.sh
+discordBot.db
