@@ -164,7 +164,7 @@ class MusicService {
         val guildId = event.guildId.orElse(null) ?: return Mono.empty()
         val musicManager = getGuildMusicManager(guildId)
 
-        val gifLink = "https://media.discordapp.net/attachments/816984360665219113/959247739575750717/bylling.gif"
+        val gifLink = "https://tenor.com/view/chatviblyadok-gif-25739796"
         val denialGifLink =
             "https://tenor.com/view/%D0%BF%D0%BE%D1%85%D1%83%D0%B9-death-error-gif-20558982"
 
