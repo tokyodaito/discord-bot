@@ -1,4 +1,4 @@
-package service
+package service.music
 
 import bot.Bot
 import discord4j.core.event.domain.message.MessageCreateEvent
@@ -12,6 +12,7 @@ class MusicService {
     private val youTubeImpl = Bot.remoteComponent.getYouTubeImpl()
     private val messageService = Bot.serviceComponent.getMessageService()
     private val voiceChannelService = Bot.serviceComponent.getVoiceChannelService()
+    private val favorites = Favorites()
 
     fun play(event: MessageCreateEvent, link: String): Mono<Void?> {
         val guildId = event.guildId.orElse(null) ?: return Mono.empty<Void>()
@@ -28,7 +29,6 @@ class MusicService {
                             Mono.fromRunnable<Void> {
                                 try {
                                     playerManager.loadItem(link, musicManager.scheduler)
-                                    musicManager.player.addListener(musicManager.scheduler)
                                 } catch (e: Exception) {
                                     println("An error occurred: ${e.message}")
                                     e.printStackTrace()
@@ -83,7 +83,12 @@ class MusicService {
                                 .doOnNext { command ->
                                     if (command.size > 1) {
                                         val input = command.subList(1, command.size).joinToString(" ")
-                                        if (!input.matches(Regex("^(https?|ftp)://[^\\s/$.?#].\\S*$"))) {
+                                        val youtubeVideoRegex =
+                                            "^(https?://)?(www\\.)?(youtube\\.com/watch\\?v=|youtu\\.be/)[a-zA-Z0-9_-]+"
+                                        val youtubePlaylistRegex =
+                                            "^(https?://)?(www\\.)?youtube\\.com/playlist\\?list=[a-zA-Z0-9_-]+"
+
+                                        if (input.matches(Regex("$youtubeVideoRegex|$youtubePlaylistRegex"))) {
                                             val youtubeSearchResult = youTubeImpl.searchYoutube(input)
                                             if (youtubeSearchResult != null) {
                                                 playerManager.loadItem(youtubeSearchResult, musicManager.scheduler)
@@ -91,7 +96,6 @@ class MusicService {
                                         } else {
                                             playerManager.loadItem(input, musicManager.scheduler)
                                         }
-                                        musicManager.player.addListener(musicManager.scheduler)
                                     }
                                 }.then()
                         } else {
@@ -108,7 +112,12 @@ class MusicService {
                                     .doOnNext { command ->
                                         if (command.size > 1) {
                                             val input = command.subList(1, command.size).joinToString(" ")
-                                            if (!input.matches(Regex("^(https?|ftp)://[^\\s/$.?#].\\S*$"))) {
+                                            val youtubeVideoRegex =
+                                                "^(https?://)?(www\\.)?(youtube\\.com/watch\\?v=|youtu\\.be/)[a-zA-Z0-9_-]+"
+                                            val youtubePlaylistRegex =
+                                                "^(https?://)?(www\\.)?youtube\\.com/playlist\\?list=[a-zA-Z0-9_-]+"
+
+                                            if (input.matches(Regex("$youtubeVideoRegex|$youtubePlaylistRegex"))) {
                                                 val youtubeSearchResult = youTubeImpl.searchYoutube(input)
                                                 if (youtubeSearchResult != null) {
                                                     playerManager.loadItem(youtubeSearchResult, musicManager.scheduler)
@@ -309,23 +318,32 @@ class MusicService {
         }
     }
 
-    fun saveFavorites(event: MessageCreateEvent): Mono<Void?> {
-        val musicManager = getGuildMusicManager(event)
+    fun saveFavorite(event: MessageCreateEvent): Mono<Void?> {
+        return favorites.saveFavorite(event)
+    }
 
-        return Mono.justOrEmpty(event.message.content)
-            .map { content -> content.split(" ") }
-            .doOnNext { command ->
-                if (command.size > 1) {
-                    val input = command.subList(1, command.size).joinToString(" ")
-                    if (!input.matches(Regex("^(https?|ftp)://[^\\s/$.?#].\\S*$"))) {
-                        musicManager.addFavorites(input)
-                    } else {
-                        messageService.sendMessage(event, "Неправильная ссылка")
-                    }
-                }
-            }.onErrorResume {
-                println("Error saveFavorites: $it")
+    fun getFavorites(event: MessageCreateEvent): Mono<Void?> {
+        return favorites.getFavoritesToDisplay(event)
+    }
+
+    fun playFavorite(event: MessageCreateEvent): Mono<Void?> {
+        return favorites.getLinkOfFavorite(event).flatMap {
+            if (it != null) {
+                play(event, it)
+            } else {
                 Mono.empty()
-            }.then()
+            }
+        }.onErrorResume {
+            println("Error playFavorite: $it")
+            Mono.empty()
+        }
+    }
+
+    fun removeOfFavorite(event: MessageCreateEvent): Mono<Void?> {
+        return favorites.removeOfFavorite(event).then()
+    }
+
+    fun addToFavoritesCurrentTrack(event: MessageCreateEvent): Mono<Void?> {
+        return favorites.addTheCurrentTrackToFavorites(event).then()
     }
 }

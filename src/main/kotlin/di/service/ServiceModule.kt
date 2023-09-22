@@ -4,7 +4,7 @@ import dagger.Module
 import dagger.Provides
 import service.GodmodeService
 import service.MessageService
-import service.MusicService
+import service.music.MusicService
 import service.VoiceChannelService
 
 @Module

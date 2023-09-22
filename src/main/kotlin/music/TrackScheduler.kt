@@ -33,9 +33,6 @@ class TrackScheduler(
     var lastMessage: Message? = null
     val lastMessageLock = Any()
 
-    //  Фикс ошибочной работы onTrackEnd, который отсылает несколько event
-    private var lastTrack: AudioTrack? = null
-
     private var initialPlaylist: List<AudioTrack> = listOf()
 
     override fun trackLoaded(track: AudioTrack?) {
@@ -100,46 +97,34 @@ class TrackScheduler(
     }
 
     override fun onTrackEnd(player: AudioPlayer?, track: AudioTrack?, endReason: AudioTrackEndReason?) {
-        if (lastTrack != null && track != null && track.info.identifier == lastTrack!!.info.identifier) {
-            if (endReason == AudioTrackEndReason.FINISHED && loop) {
-                nextTrack()
-            } else if (endReason == AudioTrackEndReason.CLEANUP || endReason == AudioTrackEndReason.STOPPED || queue.isEmpty()) {
-                loop = false
-                firstSong = true
-                currentTrack = null
-                currentEvent?.let { it1 -> Bot.serviceComponent.getVoiceChannelService().disconnect(it1) }
-            }
-        } else {
-            endReason?.takeIf { it.mayStartNext }?.let {
-                lastTrack = track
-                when {
-                    it == AudioTrackEndReason.FINISHED && loop -> {
-                        nextTrack()
-                    }
+        endReason?.takeIf { it.mayStartNext }?.let {
+            when {
+                it == AudioTrackEndReason.FINISHED && loop -> {
+                    nextTrack()
+                }
 
-                    queue.isNotEmpty() && it == AudioTrackEndReason.FINISHED -> {
-                        nextTrack()
-                    }
+                queue.isNotEmpty() && it == AudioTrackEndReason.FINISHED -> {
+                    nextTrack()
+                }
 
-                    playlistLoop && (it == AudioTrackEndReason.CLEANUP || queue.isEmpty()) -> {
-                        queue.addAll(initialPlaylist)
-                        nextTrack()
-                    }
+                playlistLoop && (it == AudioTrackEndReason.CLEANUP || queue.isEmpty()) -> {
+                    queue.addAll(initialPlaylist)
+                    nextTrack()
+                }
 
-                    it == AudioTrackEndReason.CLEANUP || it == AudioTrackEndReason.STOPPED || queue.isEmpty() -> {
-                        loop = false
-                        firstSong = true
-                        currentTrack = null
-                        currentEvent?.let { it1 ->
-                            clearQueue()
-                            player?.removeListener(this)
-                            Bot.serviceComponent.getVoiceChannelService().disconnect(it1).subscribe()
-                        }
+                it == AudioTrackEndReason.CLEANUP || it == AudioTrackEndReason.STOPPED || queue.isEmpty() -> {
+                    loop = false
+                    firstSong = true
+                    currentTrack = null
+                    currentEvent?.let { it1 ->
+                        clearQueue()
+                        player?.removeListener(this)
+                        Bot.serviceComponent.getVoiceChannelService().disconnect(it1).subscribe()
                     }
+                }
 
-                    else -> {
-                        println("EndReason: $it")
-                    }
+                else -> {
+                    println("EndReason: $it")
                 }
             }
         }
