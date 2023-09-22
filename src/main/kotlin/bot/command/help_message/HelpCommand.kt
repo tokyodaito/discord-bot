@@ -18,13 +18,18 @@ class HelpCommand : Command {
         val loop = "loop - включить циклическое повторение песни"
         val shuffle = "shuffle - перемешать очередь воспроизведения музыки"
         val playlistloop = "playlistloop - включить циклическое повторение плейлиста"
-        val jump = "jump - перейти к воспроизведению песни по индексу в очереди"
+        val jump = "jump (номер в списке) - перейти к воспроизведению песни по индексу в очереди"
+        val savefavorite = "savefavorite (ссылка) - сохранить трек/плейлист в избранном"
+        val getfavorites = "getfavorites - получить список треков/плейлистов в избранном"
+        val pfavorite = "pfavorite (номер в списке) - воспроизвести трек/плейлист из списка избранного"
+        val rmfavorite = "rmfavorite (номер в списке) - удалить трек/плейлист из списка избранного"
+        val nowfavorite = "nowfavorite - добавить играющую песню в список избранного"
 
         return event?.let {
             messageService.createEmbedMessage(
                 event,
                 title = "Список команд:",
-                description = "$ping\n$play\n$serega\n$stop\n$next\n$queue\n$what\n$loop\n$playlistloop\n$shuffle\n$jump"
+                description = "$ping\n$play\n$serega\n$stop\n$next\n$queue\n$what\n$loop\n$playlistloop\n$shuffle\n$jump\n$savefavorite\n$getfavorites\n$pfavorite\n$rmfavorite\n$nowfavorite"
             ).then()
         }
     }

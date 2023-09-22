@@ -1,4 +1,4 @@
-package bot.command.music.change_state_player
+package bot.command.music.change_state_player.favorites
 
 import bot.Bot
 import bot.Command
@@ -8,6 +8,6 @@ import reactor.core.publisher.Mono
 class SaveFavoritesCommand : Command {
 
     override fun execute(event: MessageCreateEvent?): Mono<Void?>? {
-        return event?.let { Bot.serviceComponent.getMusicService().saveFavorites(it) }
+        return event?.let { Bot.serviceComponent.getMusicService().saveFavorite(it) }
     }
 }

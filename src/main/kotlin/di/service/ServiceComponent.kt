@@ -3,8 +3,8 @@ package di.service
 import dagger.Component
 import service.GodmodeService
 import service.MessageService
-import service.MusicService
 import service.VoiceChannelService
+import service.music.MusicService
 
 @Component(modules = [ServiceModule::class])
 interface ServiceComponent {

@@ -25,4 +25,48 @@ class YouTubeImpl(private val apiKey: String) {
             null
         }
     }
+
+    fun fetchInfo(link: String): String? {
+        val videoSplit = link.split("v=")
+        val videoId: String? = if (videoSplit.size > 1) videoSplit[1].split("&").getOrNull(0) else null
+
+        val playlistSplit = link.split("list=")
+        val playlistId: String? = if (playlistSplit.size > 1) playlistSplit[1].split("&").getOrNull(0) else null
+
+
+        if (playlistId != null) {
+            // Получение информации о плейлисте
+            val playlistUrl = "https://www.googleapis.com/youtube/v3/playlists?id=${
+                URLEncoder.encode(
+                    playlistId,
+                    "UTF-8"
+                )
+            }&key=$apiKey&part=snippet"
+            val playlistJson = URL(playlistUrl).readText()
+            val playlistObj = JsonParser.parseString(playlistJson).asJsonObject
+            val items = playlistObj.getAsJsonArray("items")
+
+            if (items.size() > 0) {
+                val snippet = items[0].asJsonObject.getAsJsonObject("snippet")
+                return snippet.getAsJsonPrimitive("title").asString
+            }
+        } else if (videoId != null) {
+            // Получение информации о видео
+            val videoUrl = "https://www.googleapis.com/youtube/v3/videos?id=${
+                URLEncoder.encode(
+                    videoId,
+                    "UTF-8"
+                )
+            }&key=$apiKey&part=snippet"
+            val videoJson = URL(videoUrl).readText()
+            val videoObj = JsonParser.parseString(videoJson).asJsonObject
+            val items = videoObj.getAsJsonArray("items")
+
+            if (items.size() > 0) {
+                val snippet = items[0].asJsonObject.getAsJsonObject("snippet")
+                return snippet.getAsJsonPrimitive("title").asString
+            }
+        }
+        return null
+    }
 }

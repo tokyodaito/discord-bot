@@ -4,7 +4,11 @@ import bot.command.godmode.GodmodeDisableCommand
 import bot.command.godmode.GodmodeEnableCommand
 import bot.command.help_message.HelpCommand
 import bot.command.help_message.PingCommand
-import bot.command.music.change_state_player.*
+import bot.command.music.change_state_player.DeleteCommand
+import bot.command.music.change_state_player.PlayCommand
+import bot.command.music.change_state_player.PlayLinkCommand
+import bot.command.music.change_state_player.StopCommand
+import bot.command.music.change_state_player.favorites.*
 import bot.command.music.information.QueueCommand
 import bot.command.music.information.WhatPlayingCommand
 import bot.command.music.loop.LoopCommand
@@ -30,6 +34,7 @@ class Bot(id: String, private val apiKeyYouTube: String) {
 
     init {
         initDaggerComponents()
+        initDatabase()
         initCommands()
         val client: GatewayDiscordClient? = DiscordClientBuilder.create(id).build().login().block()
 
@@ -72,6 +77,16 @@ class Bot(id: String, private val apiKeyYouTube: String) {
         commands["jump"] = JumpCommand()
 
         commands["delete"] = DeleteCommand()
+
+        commands["savefavorite"] = SaveFavoritesCommand()
+
+        commands["getfavorites"] = GetFavoritesCommand()
+
+        commands["pfavorite"] = PlayFavoriteCommand()
+
+        commands["rmfavorite"] = RemoveOfFavoriteCommand()
+
+        commands["nowfavorite"] = NowFavoriteCommand()
     }
 
     private fun initDaggerComponents() {
