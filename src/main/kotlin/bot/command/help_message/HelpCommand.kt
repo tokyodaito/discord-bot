@@ -8,29 +8,49 @@ import reactor.core.publisher.Mono
 class HelpCommand : Command {
     val messageService = Bot.serviceComponent.getMessageService()
     override fun execute(event: MessageCreateEvent?): Mono<Void?>? {
-        val ping = "ping - проверка работоспособности бота"
-        val play = "play (либо ссылка, либо название) - подключение к голосовому каналу и воспроизведение песни"
-        val serega = "серега - подключение к голосовому каналу и воспроизведение плейлиста с Серегой Пиратом"
-        val stop = "stop - отключение от голосового канала и прекращения воспроизведения музыки"
-        val next = "next - переключится на следующий трек"
-        val queue = "queue - посмотреть очередь воспроизведения песен"
-        val what = "what - какая песня сейчас воспроизводится"
-        val loop = "loop - включить циклическое повторение песни"
-        val shuffle = "shuffle - перемешать очередь воспроизведения музыки"
-        val playlistloop = "playlistloop - включить циклическое повторение плейлиста"
-        val jump = "jump (номер в списке) - перейти к воспроизведению песни по индексу в очереди"
-        val savefavorite = "savefavorite (ссылка) - сохранить трек/плейлист в избранном"
-        val getfavorites = "getfavorites - получить список треков/плейлистов в избранном"
-        val pfavorite = "pfavorite (номер в списке) - воспроизвести трек/плейлист из списка избранного"
-        val rmfavorite = "rmfavorite (номер в списке) - удалить трек/плейлист из списка избранного"
-        val nowfavorite = "nowfavorite - добавить играющую песню в список избранного"
+        val generalCommands = """
+        **Общие команды**
+        - `ping`: проверка работоспособности бота
+    """.trimIndent()
+
+        val musicCommands = """
+        **Музыкальные команды**
+        - `play (либо ссылка, либо название)`: подключение и воспроизведение песни
+        - `serega`: воспроизведение плейлиста с Серегой Пиратом
+        - `stop`: отключение от голосового канала
+        - `next`: следующий трек
+        - `queue`: посмотреть очередь
+        - `what`: какая песня сейчас играет
+        - `loop`: циклическое повторение песни
+        - `shuffle`: перемешать очередь
+        - `playlistloop`: повторение плейлиста
+        - `jump (номер)`: перейти к треку в очереди
+    """.trimIndent()
+
+        val favoriteCommands = """
+        **Команды для работы с избранным**
+        - `savefavorite (ссылка)`: сохранить в избранное
+        - `getfavorites`: список избранного
+        - `pfavorite (номер)`: воспроизвести из избранного
+        - `rmfavorite (номер)`: удалить из избранного
+        - `nowfavorite`: добавить текущую песню в избранное
+    """.trimIndent()
+
+        val allCommands = """
+        $generalCommands
+        
+        $musicCommands
+        
+        $favoriteCommands
+    """.trimIndent()
 
         return event?.let {
             messageService.createEmbedMessage(
                 event,
                 title = "Список команд:",
-                description = "$ping\n$play\n$serega\n$stop\n$next\n$queue\n$what\n$loop\n$playlistloop\n$shuffle\n$jump\n$savefavorite\n$getfavorites\n$pfavorite\n$rmfavorite\n$nowfavorite"
+                description = allCommands
             ).then()
         }
     }
+
 }
