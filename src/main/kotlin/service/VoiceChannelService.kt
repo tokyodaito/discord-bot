@@ -28,10 +28,13 @@ class VoiceChannelService {
     }
 
     fun disconnect(event: MessageCreateEvent): Mono<Void> {
+        val musicManager = GuildManager.getGuildMusicManager(event)
+
         return Mono.justOrEmpty(event.member.orElse(null))
             .flatMap { member ->
                 member.voiceState.flatMap { voiceState ->
                     voiceState.channel.flatMap { channel ->
+                        musicManager.player.removeListener(musicManager.scheduler)
                         channel.sendDisconnectVoiceState()
                     }
                 }

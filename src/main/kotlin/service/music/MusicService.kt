@@ -14,8 +14,6 @@ class MusicService {
     private val voiceChannelService = Bot.serviceComponent.getVoiceChannelService()
     private val favorites = Favorites()
 
-    // TODO: Сделать addListener отдельной функцией, с проверкой бота на нахождение в Voice
-    // Это причина неправильной работы TrackEvent
     fun play(event: MessageCreateEvent, link: String): Mono<Void?> {
         val guildId = event.guildId.orElse(null) ?: return Mono.empty<Void>()
         val musicManager = getGuildMusicManager(guildId)
@@ -31,7 +29,6 @@ class MusicService {
                             Mono.fromRunnable<Void> {
                                 try {
                                     playerManager.loadItem(link, musicManager.scheduler)
-                                    musicManager.player.addListener(musicManager.scheduler)
                                 } catch (e: Exception) {
                                     println("An error occurred: ${e.message}")
                                     e.printStackTrace()
@@ -99,7 +96,6 @@ class MusicService {
                                         } else {
                                             playerManager.loadItem(input, musicManager.scheduler)
                                         }
-                                        musicManager.player.addListener(musicManager.scheduler)
                                     }
                                 }.then()
                         } else {
