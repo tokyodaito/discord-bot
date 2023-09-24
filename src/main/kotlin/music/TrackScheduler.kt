@@ -79,9 +79,7 @@ class TrackScheduler(
     override fun noMatches() {
         println("No matches found for the given input")
         currentEvent?.let {
-            Bot.serviceComponent.getVoiceChannelService()
-                .disconnect(it)
-                .then(messageService.sendMessage(it, "Ошибка загрузки трека"))
+            messageService.sendMessage(it, "Ошибка загрузки трека")
                 .subscribe()
         }
     }
@@ -89,9 +87,7 @@ class TrackScheduler(
     override fun loadFailed(exception: FriendlyException) {
         println("Failed to load track: ${exception.message}")
         currentEvent?.let {
-            Bot.serviceComponent.getVoiceChannelService()
-                .disconnect(it)
-                .then(messageService.sendMessage(it, "Ошибка загрузки трека"))
+            messageService.sendMessage(it, "Ошибка загрузки трека")
                 .subscribe()
         }
     }
