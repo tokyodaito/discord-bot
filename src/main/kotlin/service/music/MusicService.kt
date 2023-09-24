@@ -88,7 +88,7 @@ class MusicService {
                                         val youtubePlaylistRegex =
                                             "^(https?://)?(www\\.)?youtube\\.com/playlist\\?list=[a-zA-Z0-9_-]+"
 
-                                        if (input.matches(Regex("$youtubeVideoRegex|$youtubePlaylistRegex"))) {
+                                        if (!input.matches(Regex("$youtubeVideoRegex|$youtubePlaylistRegex"))) {
                                             val youtubeSearchResult = youTubeImpl.searchYoutube(input)
                                             if (youtubeSearchResult != null) {
                                                 playerManager.loadItem(youtubeSearchResult, musicManager.scheduler)
@@ -117,7 +117,7 @@ class MusicService {
                                             val youtubePlaylistRegex =
                                                 "^(https?://)?(www\\.)?youtube\\.com/playlist\\?list=[a-zA-Z0-9_-]+"
 
-                                            if (input.matches(Regex("$youtubeVideoRegex|$youtubePlaylistRegex"))) {
+                                            if (!input.matches(Regex("$youtubeVideoRegex|$youtubePlaylistRegex"))) {
                                                 val youtubeSearchResult = youTubeImpl.searchYoutube(input)
                                                 if (youtubeSearchResult != null) {
                                                     playerManager.loadItem(youtubeSearchResult, musicManager.scheduler)
