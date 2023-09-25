@@ -6,18 +6,16 @@ import discord4j.core.event.domain.VoiceStateUpdateEvent
 import discord4j.core.event.domain.message.MessageCreateEvent
 import discord4j.core.`object`.VoiceState
 import discord4j.core.`object`.entity.channel.VoiceChannel
-import manager.GuildManager
 import manager.GuildManager.getGuildMusicManager
 import reactor.core.publisher.Flux
 import reactor.core.publisher.Mono
+import reactor.core.scheduler.Schedulers
 import reactor.util.retry.Retry
 import service.GodmodeService
 import service.MessageService
 import java.time.Duration
 
 internal class Observers(private val commands: MutableMap<String, Command>) {
-    private val messageService = MessageService()
-
     internal fun setEventObserver(client: GatewayDiscordClient) {
         observeMessageEvents(client)
         observeVoiceEvents(client)
@@ -41,10 +39,11 @@ internal class Observers(private val commands: MutableMap<String, Command>) {
                         }
                 }
             }
-        }.onErrorResume {
-            println("Error observeMessageEvents: $it")
-            Mono.empty()
-        }.subscribe()
+        }.subscribeOn(Schedulers.parallel())
+            .onErrorResume {
+                println("Error observeMessageEvents: $it")
+                Mono.empty()
+            }.subscribe()
     }
 
     private fun observeVoiceEvents(client: GatewayDiscordClient) {
@@ -112,13 +111,14 @@ internal class Observers(private val commands: MutableMap<String, Command>) {
                     }.onErrorResume { Mono.empty<Void>() }
                 } ?: Mono.empty<Void>()
             })
-        }.doOnError { error ->
-            println("An error occurred: ${error.message}")
-            error.printStackTrace()
-        }.onErrorResume {
-            println("Error observeVoiceEvents: $it")
-            Mono.empty()
-        }.subscribe()
+        }.subscribeOn(Schedulers.parallel())
+            .doOnError { error ->
+                println("An error occurred: ${error.message}")
+                error.printStackTrace()
+            }.onErrorResume {
+                println("Error observeVoiceEvents: $it")
+                Mono.empty()
+            }.subscribe()
     }
 
 
