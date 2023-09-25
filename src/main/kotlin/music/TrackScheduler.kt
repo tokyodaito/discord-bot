@@ -10,6 +10,8 @@ import com.sedmelluq.discord.lavaplayer.track.AudioTrack
 import com.sedmelluq.discord.lavaplayer.track.AudioTrackEndReason
 import discord4j.core.event.domain.message.MessageCreateEvent
 import discord4j.core.`object`.entity.Message
+import reactor.core.publisher.Mono
+import java.time.Duration
 import java.util.concurrent.BlockingQueue
 import java.util.concurrent.LinkedBlockingQueue
 
@@ -109,13 +111,17 @@ class TrackScheduler(
                 }
 
                 it == AudioTrackEndReason.CLEANUP || it == AudioTrackEndReason.STOPPED || queue.isEmpty() -> {
-                    loop = false
-                    firstSong = true
                     currentTrack = null
-                    currentEvent?.let { it1 ->
-                        clearQueue()
-                        player?.removeListener(this)
-                        Bot.serviceComponent.getVoiceChannelService().disconnect(it1).subscribe()
+                    Mono.delay(Duration.ofMinutes(5)).subscribe {
+                        if (queue.isEmpty() && currentTrack == null) {
+                            loop = false
+                            firstSong = true
+                            currentEvent?.let { it1 ->
+                                clearQueue()
+                                player?.removeListener(this)
+                                Bot.serviceComponent.getVoiceChannelService().disconnect(it1).subscribe()
+                            }
+                        }
                     }
                 }
 
