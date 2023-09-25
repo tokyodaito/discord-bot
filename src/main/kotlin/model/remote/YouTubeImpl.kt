@@ -8,7 +8,7 @@ class YouTubeImpl(private val apiKey: String) {
     fun searchYoutube(query: String): String? {
         val encodedQuery = URLEncoder.encode(query, "UTF-8")
         val apiUrl =
-            "https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=1&q=$encodedQuery&key=${apiKey}"
+            "https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=1&type=video&q=$encodedQuery&key=${apiKey}"
 
         return try {
             val resultJson = URL(apiUrl).readText()
