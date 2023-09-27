@@ -57,8 +57,10 @@ class TrackScheduler(
                 }
 
                 !queue.contains(trackNotNull) -> {
-                    queue.offer(trackNotNull)
-                    messageService.sendInformationAboutSong(event, trackNotNull, loop, playlistLoop, true).subscribe()
+                    if (queue.offer(trackNotNull))
+                        messageService.sendInformationAboutSong(event, trackNotNull, loop, playlistLoop, true).subscribe()
+                    else
+                        messageService.sendMessage(event, "Не удалось добавить в очередь").subscribe()
                 }
 
                 else -> {

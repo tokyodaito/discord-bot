@@ -15,7 +15,7 @@ class YouTubeImpl(private val apiKey: String) {
             val jsonObject = JsonParser.parseString(resultJson).asJsonObject
             val items = jsonObject.getAsJsonArray("items")
             if (items.size() > 0) {
-                val videoId = items.get(0).asJsonObject.getAsJsonObject("id").get("videoId").asString
+                val videoId = items[0].asJsonObject.getAsJsonObject("id")["videoId"].asString
                 "https://www.youtube.com/watch?v=$videoId"
             } else {
                 null

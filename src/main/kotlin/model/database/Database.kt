@@ -4,7 +4,7 @@ import java.sql.*
 
 class Database {
     fun initDatabase() {
-        val connection = DriverManager.getConnection("jdbc:sqlite:discordBot.db")
+        val connection = DriverManager.getConnection(DATABASE)
         val statement: Statement = connection.createStatement()
         statement.execute("CREATE TABLE IF NOT EXISTS server_data (memberId TEXT PRIMARY KEY, favorites TEXT)")
         connection.close()
@@ -15,7 +15,7 @@ class Database {
         var preparedStatement: PreparedStatement? = null
 
         try {
-            connection = DriverManager.getConnection("jdbc:sqlite:discordBot.db")
+            connection = DriverManager.getConnection(DATABASE)
             val sql = "INSERT OR REPLACE INTO server_data (memberId, favorites) VALUES (?, ?)"
             preparedStatement = connection.prepareStatement(sql)
             preparedStatement.setString(1, memberId)
@@ -42,7 +42,7 @@ class Database {
         var preparedStatement: PreparedStatement? = null
 
         try {
-            connection = DriverManager.getConnection("jdbc:sqlite:discordBot.db")
+            connection = DriverManager.getConnection(DATABASE)
             val sql = "SELECT favorites FROM server_data WHERE memberId = ?"
             preparedStatement = connection.prepareStatement(sql)
             preparedStatement.setString(1, memberId)
@@ -65,7 +65,7 @@ class Database {
         var preparedStatement: PreparedStatement? = null
 
         try {
-            connection = DriverManager.getConnection("jdbc:sqlite:discordBot.db")
+            connection = DriverManager.getConnection(DATABASE)
 
             val existingFavorites = loadServerFavorites(memberId)?.toMutableList() ?: mutableListOf()
 
@@ -85,5 +85,9 @@ class Database {
             preparedStatement?.close()
             connection?.close()
         }
+    }
+
+    companion object {
+        private const val DATABASE = "jdbc:sqlite:discordBot.db"
     }
 }

@@ -6,6 +6,7 @@ import discord4j.core.`object`.entity.Message
 import discord4j.core.spec.legacy.LegacyEmbedCreateSpec
 import discord4j.rest.util.Color
 import manager.GuildManager
+import manager.GuildMusicManager
 import reactor.core.publisher.Mono
 import reactor.util.retry.Retry
 import java.time.Duration
@@ -20,99 +21,6 @@ class MessageService {
                 Mono.empty()
             }
     }
-
-    fun sendNewInformationAboutSong(
-        event: MessageCreateEvent, track: AudioTrack, loop: Boolean, loopPlaylist: Boolean, stayInQueueStatus: Boolean
-    ): Mono<Void> {
-        val musicManager = GuildManager.getGuildMusicManager(event)
-
-        return Mono.defer {
-            synchronized(musicManager.scheduler.lastMessageLock) {
-                if (!stayInQueueStatus) {
-                    musicManager.scheduler.lastMessage?.delete()?.onErrorResume {
-                        Mono.empty()
-                    } ?: Mono.empty()
-                } else {
-                    Mono.empty()
-                }
-            }
-        }.then(event.message.channel.flatMap {
-            createEmbedMessage(
-                event,
-                if (stayInQueueStatus) "Поставлено в очередь" else "Играющий трек",
-                "[${track.info.title}](https://www.youtube.com/watch?v=${track.info.identifier}) - ${track.info.author}",
-                track.info.artworkUrl,
-                "Трек длиной: ${TimeUnit.MILLISECONDS.toMinutes(track.duration)} минут ${
-                    TimeUnit.MILLISECONDS.toSeconds(
-                        track.duration
-                    ) % 60
-                } секунд \n ${if (loop) "Повтор включен" else ""} \n ${if (loopPlaylist) "Повтор плейлиста включен" else ""}"
-            ).flatMap { message ->
-                synchronized(musicManager.scheduler.lastMessageLock) {
-                    if (!stayInQueueStatus) {
-                        musicManager.scheduler.lastMessage = message
-                    }
-                }
-                Mono.empty<Void>()
-            }
-        }.onErrorResume {
-            println("Error sendMessage: $it")
-            Mono.empty()
-        })
-    }
-
-    fun sendInformationAboutSong(
-        event: MessageCreateEvent, track: AudioTrack, loop: Boolean, loopPlaylist: Boolean, stayInQueueStatus: Boolean
-    ): Mono<Void> {
-        val musicManager = GuildManager.getGuildMusicManager(event)
-
-        return Mono.defer {
-            synchronized(musicManager.scheduler.lastMessageLock) {
-                val lastMessage = musicManager.scheduler.lastMessage
-                if (lastMessage != null && !stayInQueueStatus) {
-                    editEmbedMessage(
-                        lastMessage,
-                        if (stayInQueueStatus) "Поставлено в очередь" else "Играющий трек",
-                        "[${track.info.title}](https://www.youtube.com/watch?v=${track.info.identifier}) - ${track.info.author}",
-                        track.info.artworkUrl,
-                        "Трек длиной: ${TimeUnit.MILLISECONDS.toMinutes(track.duration)} минут ${
-                            TimeUnit.MILLISECONDS.toSeconds(
-                                track.duration
-                            ) % 60
-                        } секунд \n ${if (loop) "Повтор включен" else ""} \n ${if (loopPlaylist) "Повтор плейлиста включен" else ""}",
-                        null, null, null, null
-                    ).doOnError {
-                        println("Error editing message: $it")
-                    }.then()
-                } else {
-                    event.message.channel.flatMap {
-                        createEmbedMessage(
-                            event,
-                            if (stayInQueueStatus) "Поставлено в очередь" else "Играющий трек",
-                            "[${track.info.title}](https://www.youtube.com/watch?v=${track.info.identifier}) - ${track.info.author}",
-                            track.info.artworkUrl,
-                            "Трек длиной: ${TimeUnit.MILLISECONDS.toMinutes(track.duration)} минут ${
-                                TimeUnit.MILLISECONDS.toSeconds(
-                                    track.duration
-                                ) % 60
-                            } секунд \n ${if (loop) "Повтор включен" else ""} \n ${if (loopPlaylist) "Повтор плейлиста включен" else ""}"
-                        ).flatMap { message ->
-                            synchronized(musicManager.scheduler.lastMessageLock) {
-                                if (!stayInQueueStatus) {
-                                    musicManager.scheduler.lastMessage = message
-                                }
-                            }
-                            Mono.empty<Void>()
-                        }.onErrorResume {
-                            println("Error creating message: $it")
-                            Mono.empty()
-                        }
-                    }
-                }
-            }
-        }
-    }
-
 
     fun createEmbedMessage(
         event: MessageCreateEvent,
@@ -160,6 +68,104 @@ class MessageService {
         }
     }
 
+    fun sendNewInformationAboutSong(
+        event: MessageCreateEvent, track: AudioTrack, loop: Boolean,
+        loopPlaylist: Boolean, stayInQueueStatus: Boolean
+    ): Mono<Void> {
+        val musicManager = GuildManager.getGuildMusicManager(event)
+
+        return Mono.defer {
+            synchronized(musicManager.scheduler.lastMessageLock) {
+                val lastMessage = musicManager.scheduler.lastMessage
+                if (lastMessage != null && !stayInQueueStatus) {
+                    lastMessage.delete()
+                }
+                createMessage(event, track, loop, loopPlaylist, stayInQueueStatus, musicManager)
+            }
+        }
+    }
+
+    fun sendInformationAboutSong(
+        event: MessageCreateEvent, track: AudioTrack, loop: Boolean,
+        loopPlaylist: Boolean, stayInQueueStatus: Boolean
+    ): Mono<Void> {
+        val musicManager = GuildManager.getGuildMusicManager(event)
+
+        return Mono.defer {
+            synchronized(musicManager.scheduler.lastMessageLock) {
+                val lastMessage = musicManager.scheduler.lastMessage
+                if (lastMessage != null && !stayInQueueStatus) {
+                    editMessage(lastMessage, track, loop, loopPlaylist, stayInQueueStatus)
+                } else {
+                    createMessage(event, track, loop, loopPlaylist, stayInQueueStatus, musicManager)
+                }
+            }
+        }
+    }
+
+    private fun editMessage(
+        lastMessage: Message,
+        track: AudioTrack,
+        loop: Boolean,
+        loopPlaylist: Boolean,
+        stayInQueueStatus: Boolean
+    ): Mono<Void> {
+        return editEmbedMessage(
+            lastMessage,
+            getStatus(stayInQueueStatus),
+            getTrackDescription(track),
+            track.info.artworkUrl,
+            getTrackAdditionalInfo(track, loop, loopPlaylist)
+        ).doOnError {
+            println("Error editing message: $it")
+        }.then()
+    }
+
+    private fun createMessage(
+        event: MessageCreateEvent,
+        track: AudioTrack,
+        loop: Boolean,
+        loopPlaylist: Boolean,
+        stayInQueueStatus: Boolean,
+        musicManager: GuildMusicManager
+    ): Mono<Void> {
+        return event.message.channel.flatMap {
+            createEmbedMessage(
+                event,
+                getStatus(stayInQueueStatus),
+                getTrackDescription(track),
+                track.info.artworkUrl,
+                getTrackAdditionalInfo(track, loop, loopPlaylist)
+            ).flatMap { message ->
+                synchronized(musicManager.scheduler.lastMessageLock) {
+                    if (!stayInQueueStatus) {
+                        musicManager.scheduler.lastMessage = message
+                    }
+                }
+                Mono.empty<Void>()
+            }.onErrorResume {
+                println("Error creating message: $it")
+                Mono.empty()
+            }
+        }
+    }
+
+    private fun getTrackDescription(track: AudioTrack): String {
+        return "[${track.info.title}](https://www.youtube.com/watch?v=${track.info.identifier}) - ${track.info.author}"
+    }
+
+    private fun getTrackAdditionalInfo(track: AudioTrack, loop: Boolean, loopPlaylist: Boolean): String {
+        val durationMinutes = TimeUnit.MILLISECONDS.toMinutes(track.duration)
+        val durationSeconds = TimeUnit.MILLISECONDS.toSeconds(track.duration) % 60
+        val loopStatus = if (loop) "Повтор включен" else ""
+        val loopPlaylistStatus = if (loopPlaylist) "Повтор плейлиста включен" else ""
+        return "Трек длиной: $durationMinutes минут $durationSeconds секунд \n $loopStatus \n $loopPlaylistStatus"
+    }
+
+    private fun getStatus(stayInQueueStatus: Boolean): String {
+        return if (stayInQueueStatus) STAY_IN_QUEUE else PLAYING_TRACK
+    }
+
     private fun applyEmbedProperties(
         embedCreateSpec: LegacyEmbedCreateSpec,
         title: String?,
@@ -181,4 +187,8 @@ class MessageService {
         author?.let { embedCreateSpec.setAuthor(it, null, null) }
     }
 
+    companion object {
+        private const val STAY_IN_QUEUE = "Поставлено в очередь"
+        private const val PLAYING_TRACK = "Играющий трек"
+    }
 }

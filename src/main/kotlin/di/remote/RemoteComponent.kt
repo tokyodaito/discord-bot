@@ -4,6 +4,6 @@ import dagger.Component
 import model.remote.YouTubeImpl
 
 @Component(modules = [RemoteModule::class])
-interface RemoteComponent {
+fun interface RemoteComponent {
     fun getYouTubeImpl() : YouTubeImpl
 }
