@@ -78,7 +78,7 @@ class MessageService {
             synchronized(musicManager.scheduler.lastMessageLock) {
                 val lastMessage = musicManager.scheduler.lastMessage
                 if (lastMessage != null && !stayInQueueStatus) {
-                    lastMessage.delete()
+                    lastMessage.delete().subscribe()
                 }
                 createMessage(event, track, loop, loopPlaylist, stayInQueueStatus, musicManager)
             }
