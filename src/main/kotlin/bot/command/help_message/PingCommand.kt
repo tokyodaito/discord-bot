@@ -4,7 +4,6 @@ import bot.Bot
 import bot.Command
 import discord4j.core.event.domain.message.MessageCreateEvent
 import reactor.core.publisher.Mono
-import service.MessageService
 
 class PingCommand : Command {
     private val messageService = Bot.serviceComponent.getMessageService()

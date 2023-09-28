@@ -7,31 +7,40 @@ import reactor.core.publisher.Mono
 class DatabaseImpl {
     fun addFavorite(memberId: Snowflake, link: String) {
         Mono.fromCallable {
-            if (link.matches(Regex("^(https?|ftp)://[^\\s/$.?#].\\S*$"))) {
-                Bot.databaseComponent.getDatabase().saveServerFavorites(memberId.toString(), link)
+            if (isValidURL(link)) {
+                saveLinkToDatabase(memberId, link)
             } else {
-                println("link dont enogouf link")
+                println("Provided link is invalid.")
             }
-        }.onErrorResume {
-            println("Error addFavorites: $it")
-            Mono.empty()
-        }.subscribe()
+        }.handleError("addFavorite")
+            .subscribe()
     }
 
     fun getFavorites(memberId: Snowflake): Mono<List<String>?> {
         return Mono.fromCallable {
             Bot.databaseComponent.getDatabase().loadServerFavorites(memberId.toString())
-        }.onErrorResume { e ->
-            println("Error addFavorites: $e")
-            Mono.empty()
-        }
+        }.handleError("getFavorites")
     }
 
     fun removeFavorite(memberId: Snowflake, link: String): Mono<Void> {
         return Mono.fromCallable { Bot.databaseComponent.getDatabase().removeServerFavorite(memberId.toString(), link) }
-            .onErrorResume { e ->
-                println("Error removeFavorite: $e")
-                Mono.empty()
-            }.then()
+            .handleError("removeFavorite")
+            .then()
+    }
+
+    private fun isValidURL(link: String): Boolean {
+        val regex = "^(https?|ftp)://[^\\s/$.?#].\\S*$"
+        return link.matches(Regex(regex))
+    }
+
+    private fun saveLinkToDatabase(memberId: Snowflake, link: String) {
+        Bot.databaseComponent.getDatabase().saveServerFavorites(memberId.toString(), link)
+    }
+
+    private fun <T> Mono<T>.handleError(functionName: String): Mono<T> {
+        return this.onErrorResume {
+            println("Error $functionName: $it")
+            Mono.empty()
+        }
     }
 }

@@ -5,7 +5,6 @@ import bot.Command
 import discord4j.core.event.domain.message.MessageCreateEvent
 import manager.GuildManager
 import reactor.core.publisher.Mono
-import service.MessageService
 
 class PlaylistLoopCommand : Command {
     private val messageService = Bot.serviceComponent.getMessageService()

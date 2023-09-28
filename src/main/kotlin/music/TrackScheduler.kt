@@ -18,53 +18,170 @@ import java.util.concurrent.LinkedBlockingQueue
 class TrackScheduler(
     private val player: AudioPlayer,
 ) : AudioLoadResultHandler, AudioEventAdapter() {
-    private val messageService = Bot.serviceComponent.getMessageService()
-
-    private var queue: BlockingQueue<AudioTrack> = LinkedBlockingQueue()
-
     var loop: Boolean = false
-
-    var currentTrack: AudioTrack? = null
-
-    var currentEvent: MessageCreateEvent? = null
-
     var playlistLoop: Boolean = false
 
-    private var firstSong: Boolean = true
+    var currentTrack: AudioTrack? = null
+    var currentEvent: MessageCreateEvent? = null
 
     var lastMessage: Message? = null
     val lastMessageLock = Any()
 
+    private var firstSong: Boolean = true
+    private val messageService = Bot.serviceComponent.getMessageService()
+    private var queue: BlockingQueue<AudioTrack> = LinkedBlockingQueue()
     private var initialPlaylist: List<AudioTrack> = listOf()
 
+    fun nextTrack() {
+        println("nextTrack")
+        if (!loop) {
+            currentTrack = queue.poll()
+        }
+        currentTrack?.let { playTrack(it) }
+    }
+
+    fun getFullTrackList(): List<AudioTrack> {
+        val fullTrackList = mutableListOf<AudioTrack>()
+        currentTrack?.let { fullTrackList.add(it) }
+        fullTrackList.addAll(queue)
+        return fullTrackList
+    }
+
+    fun deleteTrack(index: Int): Boolean {
+        if (index == 1) {
+            nextTrack()
+            return true
+        }
+
+        val adjustedIndex = index - 2
+        if (adjustedIndex >= 0 && adjustedIndex < queue.size) {
+            val list = ArrayList(queue)
+            list.removeAt(adjustedIndex)
+            queue = LinkedBlockingQueue(list)
+            return true
+        }
+
+        println("Index out of bounds")
+        return false
+    }
+
+
+    fun jumpToTrack(index: Int): Boolean {
+        val trackList = getFullTrackList()
+
+        if (index > 1 && index <= trackList.size) {
+            playTrackByIndex(index, trackList)
+            return true
+        }
+        return false
+    }
+
+    fun shuffleQueue() {
+        val shuffledList: List<AudioTrack> = queue.shuffled()
+        queue = LinkedBlockingQueue()
+        queue.addAll(shuffledList)
+    }
+
+    fun clearQueue() {
+        currentTrack = null
+        firstSong = true
+        loop = false
+        playlistLoop = false
+        player.stopTrack()
+        queue.clear()
+    }
+
+    private fun playTrackByIndex(index: Int, trackList: List<AudioTrack>) {
+        val track = trackList[index - 1]
+        currentTrack = track
+        player.startTrack(track, false)
+    }
+
+    private fun playTrack(track: AudioTrack) {
+        val trackToPlay = getTrackToPlay(track)
+        player.startTrack(trackToPlay, false)
+        sendTrackInfoMessage(track)
+    }
+
+    private fun getTrackToPlay(track: AudioTrack): AudioTrack {
+        return if (loop) track.makeClone() else track
+    }
+
+    private fun sendTrackInfoMessage(track: AudioTrack) {
+        currentEvent?.let { event ->
+            if (firstSong) {
+                firstSong = false
+                messageService.sendNewInformationAboutSong(event, track, loop, playlistLoop, false).subscribe()
+            } else {
+                messageService.sendInformationAboutSong(event, track, loop, playlistLoop, false).subscribe()
+            }
+        }
+    }
+
+    private fun handleTrack(track: AudioTrack, event: MessageCreateEvent) {
+        if (player.startTrack(track, true)) {
+            handleFirstTrack(track, event)
+        } else if (!queue.contains(track)) {
+            addTrackToQueue(track, event)
+        } else {
+            println("Track is already in the queue")
+        }
+    }
+
+    private fun handleFirstTrack(track: AudioTrack, event: MessageCreateEvent) {
+        currentTrack = track
+        if (firstSong) {
+            messageService.sendNewInformationAboutSong(event, track, loop, playlistLoop, false).subscribe()
+        }
+    }
+
+    private fun addTrackToQueue(track: AudioTrack, event: MessageCreateEvent) {
+        if (queue.offer(track)) {
+            messageService.sendInformationAboutSong(event, track, loop, playlistLoop, true).subscribe()
+        } else {
+            messageService.sendMessage(event, "Не удалось добавить в очередь").subscribe()
+        }
+    }
+
+    private fun shouldRestartTrack(reason: AudioTrackEndReason): Boolean {
+        return (reason == AudioTrackEndReason.FINISHED && loop) || (queue.isNotEmpty() && reason == AudioTrackEndReason.FINISHED)
+    }
+
+    private fun shouldAddPlaylistBack(reason: AudioTrackEndReason): Boolean {
+        return playlistLoop && (reason == AudioTrackEndReason.CLEANUP || queue.isEmpty())
+    }
+
+    private fun shouldClearPlayer(reason: AudioTrackEndReason): Boolean {
+        return reason == AudioTrackEndReason.CLEANUP || reason == AudioTrackEndReason.STOPPED || queue.isEmpty()
+    }
+
+    private fun handleClearPlayer(player: AudioPlayer?) {
+        currentTrack = null
+        Mono.delay(Duration.ofMinutes(5)).subscribe {
+            if (queue.isEmpty() && currentTrack == null) {
+                resetPlayerState()
+                currentEvent?.let { event ->
+                    clearQueue()
+                    player?.removeListener(this)
+                    Bot.serviceComponent.getVoiceChannelService().disconnect(event).subscribe()
+                }
+            }
+        }
+    }
+
+    private fun resetPlayerState() {
+        loop = false
+        firstSong = true
+    }
+
     override fun trackLoaded(track: AudioTrack?) {
-        track?.let { trackNotNull ->
-            val event = currentEvent
-            if (event == null) {
-                println("Current event is null")
-                return
-            }
+        val event = currentEvent ?: run {
+            println("Current event is null")
+            return
+        }
 
-            when {
-                player.startTrack(trackNotNull, true) -> {
-                    currentTrack = trackNotNull
-                    if (firstSong) {
-                        messageService.sendNewInformationAboutSong(event, trackNotNull, loop, playlistLoop, false)
-                            .subscribe()
-                    } else {
-                        return
-                    }
-                }
-
-                !queue.contains(trackNotNull) -> {
-                    queue.offer(trackNotNull)
-                    messageService.sendInformationAboutSong(event, trackNotNull, loop, playlistLoop, true).subscribe()
-                }
-
-                else -> {
-                    println("Track is already in the queue")
-                }
-            }
+        track?.let {
+            handleTrack(it, event)
         }
     }
 
@@ -95,113 +212,17 @@ class TrackScheduler(
     }
 
     override fun onTrackEnd(player: AudioPlayer?, track: AudioTrack?, endReason: AudioTrackEndReason?) {
-        endReason?.takeIf { it.mayStartNext }?.let {
-            when {
-                it == AudioTrackEndReason.FINISHED && loop -> {
-                    nextTrack()
-                }
+        if (endReason?.mayStartNext != true) return
 
-                queue.isNotEmpty() && it == AudioTrackEndReason.FINISHED -> {
-                    nextTrack()
-                }
-
-                playlistLoop && (it == AudioTrackEndReason.CLEANUP || queue.isEmpty()) -> {
-                    queue.addAll(initialPlaylist)
-                    nextTrack()
-                }
-
-                it == AudioTrackEndReason.CLEANUP || it == AudioTrackEndReason.STOPPED || queue.isEmpty() -> {
-                    currentTrack = null
-                    Mono.delay(Duration.ofMinutes(5)).subscribe {
-                        if (queue.isEmpty() && currentTrack == null) {
-                            loop = false
-                            firstSong = true
-                            currentEvent?.let { it1 ->
-                                clearQueue()
-                                player?.removeListener(this)
-                                Bot.serviceComponent.getVoiceChannelService().disconnect(it1).subscribe()
-                            }
-                        }
-                    }
-                }
-
-                else -> {
-                    println("EndReason: $it")
-                }
+        when {
+            shouldRestartTrack(endReason) -> nextTrack()
+            shouldAddPlaylistBack(endReason) -> {
+                queue.addAll(initialPlaylist)
+                nextTrack()
             }
+
+            shouldClearPlayer(endReason) -> handleClearPlayer(player)
+            else -> println("EndReason: $endReason")
         }
-    }
-
-    fun nextTrack() {
-        println("nextTrack")
-        if (!loop) {
-            currentTrack = queue.poll()
-        }
-        currentTrack?.let { track ->
-            val trackToPlay = if (loop) track.makeClone() else track
-            player.startTrack(trackToPlay, false)
-            currentEvent?.let { event ->
-                if (firstSong) {
-                    firstSong = false
-                    messageService.sendNewInformationAboutSong(event, track, loop, playlistLoop, false).subscribe()
-                } else
-                    messageService.sendInformationAboutSong(event, track, loop, playlistLoop, false).subscribe()
-            }
-        }
-    }
-
-
-    fun getFullTrackList(): List<AudioTrack> {
-        val fullTrackList = mutableListOf<AudioTrack>()
-        currentTrack?.let { fullTrackList.add(it) }
-        fullTrackList.addAll(queue)
-        return fullTrackList
-    }
-
-    fun deleteTrack(index: Int): Boolean {
-        val indexPlaceCurrentTrack = 1
-        val indexPlaceNotNullForUser = 1
-
-        return if (index == 1) {
-            nextTrack()
-            true
-        } else {
-            if (index >= 0 && index - indexPlaceCurrentTrack - indexPlaceNotNullForUser < queue.size) {
-                val list = ArrayList(queue)
-                list.removeAt(index - indexPlaceCurrentTrack - indexPlaceNotNullForUser)
-                queue = LinkedBlockingQueue(list)
-                true
-            } else {
-                println("Index out of bounds")
-                false
-            }
-        }
-    }
-
-    fun jumpToTrack(index: Int): Boolean {
-        val trackList = getFullTrackList()
-        return if (index > 1 && index <= trackList.size) {
-            val track = trackList[index - 1]
-            currentTrack = track
-            player.startTrack(track, false)
-            true
-        } else {
-            false
-        }
-    }
-
-    fun shuffleQueue() {
-        val shuffledList: List<AudioTrack> = queue.shuffled()
-        queue = LinkedBlockingQueue()
-        queue.addAll(shuffledList)
-    }
-
-    fun clearQueue() {
-        currentTrack = null
-        firstSong = true
-        loop = false
-        playlistLoop = false
-        player.stopTrack()
-        queue.clear()
     }
 }
