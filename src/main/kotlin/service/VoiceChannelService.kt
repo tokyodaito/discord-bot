@@ -1,11 +1,16 @@
 package service
 
+import discord4j.common.util.Snowflake
 import discord4j.core.event.domain.message.MessageCreateEvent
+import discord4j.core.`object`.VoiceState
+import discord4j.core.`object`.entity.Guild
+import discord4j.core.`object`.entity.Member
 import discord4j.core.`object`.entity.channel.VoiceChannel
 import manager.GuildManager
 import reactor.core.publisher.Mono
 import reactor.util.retry.Retry
 import java.time.Duration
+import java.util.*
 
 class VoiceChannelService {
     fun join(event: MessageCreateEvent): Mono<VoiceChannel> {
@@ -17,12 +22,10 @@ class VoiceChannelService {
             .flatMap { channel ->
                 channel.join { spec -> spec.setProvider(musicManager.provider) }
                     .thenReturn(channel)
-            }.onErrorResume {
-                println("Error join: $it")
-                Mono.empty()
-            }.retryWhen(Retry.backoff(4, Duration.ofSeconds(5)))
+            }
+            .retryWhen(Retry.backoff(4, Duration.ofSeconds(5)))
             .onErrorResume {
-                println("Error in disconnect: $it")
+                println("Error: $it")
                 Mono.empty()
             }
     }
@@ -30,76 +33,76 @@ class VoiceChannelService {
     fun disconnect(event: MessageCreateEvent): Mono<Void> {
         val musicManager = GuildManager.getGuildMusicManager(event)
 
-        return Mono.justOrEmpty(event.member.orElse(null))
-            .flatMap { member ->
-                member.voiceState.flatMap { voiceState ->
-                    voiceState.channel.flatMap { channel ->
-                        musicManager.player.removeListener(musicManager.scheduler)
-                        channel.sendDisconnectVoiceState()
-                    }
+        return getMemberVoiceState(event)
+            .flatMap { voiceState ->
+                musicManager.player.removeListener(musicManager.scheduler)
+                voiceState.channel.flatMap { channel ->
+                    channel.sendDisconnectVoiceState()
                 }
-            }.retryWhen(Retry.backoff(4, Duration.ofSeconds(5)))
-            .onErrorResume {
-                println("Error in disconnect: $it")
-                Mono.empty()
             }
+            .retryWhen(Retry.backoff(4, Duration.ofSeconds(5)))
+            .onErrorResume(logError("Error in disconnect"))
     }
 
-
     fun checkUserInVoiceChannelWithBot(event: MessageCreateEvent): Mono<Boolean> {
-        return checkBotInVoiceChannel(event).flatMap { botIsInVoiceChannel ->
-            if (botIsInVoiceChannel) {
-                checkUserInVoiceChannel(event).flatMap { isInVoiceChannel ->
-                    if (isInVoiceChannel) {
-                        Mono.justOrEmpty(event.member.orElse(null)).flatMap { member ->
-                            member.voiceState.flatMap { userVoiceState ->
-                                event.client.self.flatMap { self ->
-                                    self.asMember(event.guildId.orElse(null)).flatMap { botMember ->
-                                        botMember.voiceState.map { botVoiceState ->
-                                            println(userVoiceState.channelId == botVoiceState.channelId)
-                                            userVoiceState.channelId == botVoiceState.channelId
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    } else {
-                        Mono.just(false)
-                    }
-                }
-            } else {
-                Mono.just(false)
-            }
-        }.retryWhen(Retry.backoff(3, Duration.ofSeconds(5)))
+        return checkBotInVoiceChannel(event)
+            .filter { it } // Only proceed if bot is in the voice channel
+            .flatMap { checkUserInVoiceChannel(event) }
+            .filter { it } // Only proceed if user is in the voice channel
+            .flatMap { toMono(event.member) } // Convert Optional to Mono
+            .flatMap { member -> areUserAndBotInSameChannel(member, event) }
+            .defaultIfEmpty(false)
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(5)))
             .onErrorReturn(false)
     }
 
     fun checkUserInVoiceChannel(event: MessageCreateEvent): Mono<Boolean> {
-        return Mono.justOrEmpty(event.member.orElse(null))
-            .flatMap { member ->
-                member.voiceState.map { voiceState ->
-                    voiceState.channelId.isPresent
-                }
-            }
+        return getMemberVoiceState(event)
+            .map { voiceState -> voiceState.channelId.isPresent }
             .defaultIfEmpty(false)
             .onErrorReturn(false)
     }
 
     fun checkBotInVoiceChannel(event: MessageCreateEvent): Mono<Boolean> {
         return event.client.self
-            .flatMap { self ->
-                event.guild.flatMap { guild ->
-                    guild.getMemberById(self.id)
-                        .flatMap { member ->
-                            member.voiceState.map { voiceState ->
-                                voiceState.channelId.isPresent
-                            }
-                        }
-                }
-            }
+            .flatMap { self -> getGuildMemberVoiceState(event.guild, self.id) }
+            .map { voiceState -> voiceState.channelId.isPresent }
             .defaultIfEmpty(false)
             .retryWhen(Retry.backoff(3, Duration.ofSeconds(5)))
             .onErrorReturn(false)
     }
 
+    private fun getMemberVoiceState(event: MessageCreateEvent): Mono<VoiceState> {
+        return Mono.justOrEmpty(event.member.orElse(null))
+            .flatMap { member -> member.voiceState }
+    }
+
+    private fun getGuildMemberVoiceState(guildMono: Mono<Guild>, memberId: Snowflake): Mono<VoiceState> {
+        return guildMono
+            .flatMap { guild -> guild.getMemberById(memberId) }
+            .flatMap { member -> member.voiceState }
+    }
+
+    private fun logError(message: String): (Throwable) -> Mono<Void> {
+        return { error ->
+            println("$message: $error")
+            Mono.empty()
+        }
+    }
+
+    private fun areUserAndBotInSameChannel(member: Member, event: MessageCreateEvent): Mono<Boolean> {
+        return member.voiceState
+            .flatMap { userVoiceState ->
+                event.client.self
+                    .flatMap { self -> toMono(event.guildId).flatMap { guildId -> self.asMember(guildId) } }
+                    .flatMap { botMember -> botMember.voiceState }
+                    .map { botVoiceState ->
+                        userVoiceState.channelId == botVoiceState.channelId
+                    }
+            }
+    }
+
+    private fun <T> toMono(optional: Optional<T>): Mono<T> {
+        return Mono.justOrEmpty(optional)
+    }
 }
