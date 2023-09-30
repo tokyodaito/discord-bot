@@ -6,6 +6,7 @@ import discord4j.core.`object`.VoiceState
 import discord4j.core.`object`.entity.Guild
 import discord4j.core.`object`.entity.Member
 import discord4j.core.`object`.entity.channel.VoiceChannel
+import discord4j.core.spec.VoiceChannelJoinSpec
 import manager.GuildManager
 import reactor.core.publisher.Mono
 import reactor.util.retry.Retry
@@ -20,7 +21,10 @@ class VoiceChannelService {
             .flatMap { it.voiceState }
             .flatMap { it.channel }
             .flatMap { channel ->
-                channel.join { spec -> spec.setProvider(musicManager.provider) }
+                val joinSpec = VoiceChannelJoinSpec.builder()
+                    .provider(musicManager.provider)
+                    .build()
+                channel.join(joinSpec)
                     .thenReturn(channel)
             }
             .retryWhen(Retry.backoff(4, Duration.ofSeconds(5)))
@@ -29,6 +33,7 @@ class VoiceChannelService {
                 Mono.empty()
             }
     }
+
 
     fun disconnect(event: MessageCreateEvent): Mono<Void> {
         val musicManager = GuildManager.getGuildMusicManager(event)

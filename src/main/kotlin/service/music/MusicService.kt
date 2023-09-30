@@ -255,8 +255,10 @@ class MusicService {
             }
             voiceChannelService.join(event).then(
                 if (link != null) {
+                    musicManager.player.addListener(musicManager.scheduler)
                     loadMusic(link, musicManager.scheduler)
                 } else {
+                    musicManager.player.addListener(musicManager.scheduler)
                     processYoutubeLink(event, musicManager.scheduler)
                 }
             )
