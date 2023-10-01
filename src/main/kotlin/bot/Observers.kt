@@ -73,7 +73,7 @@ internal class Observers(private val commands: MutableMap<String, Command>) {
         if (oldChannelId != null && currentChannelId == null) {
             return isBotInVoiceChannel(event, client)
                 .flatMap { botInVoice ->
-                    if (botInVoice) {
+                    if (!botInVoice) {
                         stopMusic(event.current.guildId)
                     } else {
                         Mono.empty<Void>()

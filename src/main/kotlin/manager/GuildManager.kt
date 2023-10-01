@@ -24,10 +24,8 @@ object GuildManager {
         }
     }
 
-        fun getGuildMusicManager(event: MessageCreateEvent): GuildMusicManager {
-            val guildId = event.guildId.orElse(null)
-            return musicManagers.computeIfAbsent(guildId) {
-                GuildMusicManager(guildId, playerManager)
-            }
-        }
+    fun getGuildMusicManager(event: MessageCreateEvent): GuildMusicManager {
+        val guildId = event.guildId.orElse(null)
+        return getGuildMusicManager(guildId)
     }
+}
