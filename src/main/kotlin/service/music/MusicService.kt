@@ -357,9 +357,8 @@ class MusicService {
     }
 
     private fun isValidYoutubeLink(input: String): Boolean {
-        val youtubeVideoRegex = "^(https?://)?(www\\.)?(youtube\\.com/watch\\?v=|youtu\\.be/)[a-zA-Z0-9_-]+"
-        val youtubePlaylistRegex = "^(https?://)?(www\\.)?youtube\\.com/playlist\\?list=[a-zA-Z0-9_-]+"
-        return input.matches(Regex("$youtubeVideoRegex|$youtubePlaylistRegex"))
+        val simpleUrlRegex = "^(https?://)?(www\\.)?\\S+$"
+        return input.matches(Regex(simpleUrlRegex))
     }
 
     private fun loadItem(input: String, scheduler: TrackScheduler): Mono<Void?> {
