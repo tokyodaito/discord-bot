@@ -1,9 +1,11 @@
 package service.music
 
 import bot.Bot
+import com.sedmelluq.discord.lavaplayer.track.AudioTrack
 import discord4j.core.event.domain.message.MessageCreateEvent
 import discord4j.core.event.domain.message.ReactionAddEvent
 import discord4j.core.`object`.entity.Message
+import discord4j.core.`object`.entity.channel.MessageChannel
 import discord4j.core.`object`.entity.channel.VoiceChannel
 import discord4j.core.`object`.reaction.ReactionEmoji
 import manager.GuildManager.getGuildMusicManager
@@ -42,126 +44,204 @@ class MusicService {
 
     fun jump(event: MessageCreateEvent): Mono<Void?> {
         val musicManager = getGuildMusicManager(event)
+        val args = event.message.content.split(" ")
 
-        return run {
-            val args = event.message.content.split(" ")
-            if (args.size > 1) {
-                val index = args[1].toIntOrNull()
-                if (index != null && musicManager.scheduler.jumpToTrack(index)) {
-                    val track = musicManager.scheduler.getFullTrackList()[index - 1]
-                    messageService.sendMessage(event, "Перешёл к треку с индексом $index").then(
-                        messageService.sendInformationAboutSong(
-                            event,
-                            track,
-                            musicManager.scheduler.loop,
-                            musicManager.scheduler.playlistLoop,
-                            false
-                        )
-                    )
-                } else {
-                    messageService.sendMessage(event, INVALID_INDEX)
-                }
-            } else {
-                messageService.sendMessage(event, "Укажите индекс трека")
-            }
+        return when {
+            args.size > 1 -> handleJumpWithArgs(event, musicManager, args)
+            else -> messageService.sendMessage(event, "Укажите индекс трека")
         }
+    }
+
+    private fun handleJumpWithArgs(
+        event: MessageCreateEvent,
+        musicManager: GuildMusicManager,
+        args: List<String>
+    ): Mono<Void?> {
+        val index = args[1].toIntOrNull()
+        return if (index != null && musicManager.scheduler.jumpToTrack(index)) {
+            handleSuccessfulJump(event, musicManager, index)
+        } else {
+            messageService.sendMessage(event, INVALID_INDEX)
+        }
+    }
+
+    private fun handleSuccessfulJump(
+        event: MessageCreateEvent,
+        musicManager: GuildMusicManager,
+        index: Int
+    ): Mono<Void?> {
+        val track = musicManager.scheduler.getFullTrackList()[index - 1]
+        return messageService.sendMessage(event, "Перешёл к треку с индексом $index").then(
+            messageService.sendInformationAboutSong(
+                event, track, musicManager.scheduler.loop,
+                musicManager.scheduler.playlistLoop, false
+            )
+        )
     }
 
     fun stopPlaying(event: MessageCreateEvent): Mono<Void?> {
         val guildId = event.guildId.orElse(null) ?: return Mono.empty()
         val musicManager = getGuildMusicManager(guildId)
 
-        return voiceChannelService.checkUserInVoiceChannelWithBot(event).flatMap { isInSameChannel ->
-            if (!isInSameChannel) {
-                return@flatMap messageService.sendMessage(event, DENIAL_GIF_LINK)
+        return voiceChannelService.checkUserInVoiceChannelWithBot(event)
+            .flatMap { isInSameChannel -> handleVoiceChannelCheckResult(isInSameChannel, event, musicManager) }
+            .onErrorResume {
+                println("Error stopPlaying: $it")
+                Mono.empty()
             }
-            stopMusic(event, musicManager).then(
-                messageService.sendMessage(event, "Воспроизведение остановлено")
-            ).then(
-                messageService.sendMessage(event, ACCESS_GIF_LINK)
-            )
-        }.onErrorResume {
-            println("Error stopPlaying: $it")
-            Mono.empty()
+    }
+
+    private fun handleVoiceChannelCheckResult(
+        isInSameChannel: Boolean, event: MessageCreateEvent, musicManager: GuildMusicManager
+    ): Mono<Void?> {
+        return if (!isInSameChannel) {
+            messageService.sendMessage(event, DENIAL_GIF_LINK)
+        } else {
+            stopMusicAndSendMessages(event, musicManager)
         }
+    }
+
+    private fun stopMusicAndSendMessages(
+        event: MessageCreateEvent, musicManager: GuildMusicManager
+    ): Mono<Void?> {
+        return stopMusic(event, musicManager).then(messageService.sendMessage(event, "Воспроизведение остановлено"))
+            .then(messageService.sendMessage(event, ACCESS_GIF_LINK))
     }
 
     fun showTrackList(event: MessageCreateEvent): Mono<Void> {
         val guildId = event.guildId.orElse(null) ?: return Mono.empty()
         val musicManager = getGuildMusicManager(guildId)
-
         val tracks = musicManager.scheduler.getFullTrackList()
         val tracksPerPage = 10
-        val totalPages = (tracks.size + tracksPerPage - 1) / tracksPerPage
-        var currentPage = 0
+        val totalPages = getTotalPages(tracks, tracksPerPage)
+        val currentPage = 0
 
-        fun formatTrackListPage(page: Int): String {
-            val startIndex = page * tracksPerPage
-            return tracks.drop(startIndex).take(tracksPerPage).mapIndexed { index, track ->
-                "${startIndex + index + 1}. ${track.info.title}"
-            }.joinToString("\n")
-        }
-
-        fun handleReaction(message: Message, reactionEvent: ReactionAddEvent): Mono<Void> {
-            val changePage = when (reactionEvent.emoji.asUnicodeEmoji().get().raw) {
-                "⬅" -> {
-                    if (currentPage > 0) {
-                        currentPage--
-                        true
-                    } else false
-                }
-
-                "➡" -> {
-                    if (currentPage < totalPages - 1) {
-                        currentPage++
-                        true
-                    } else false
-                }
-
-                else -> false
-            }
-
-            return if (changePage) {
-                messageService.editEmbedMessage(
-                    message,
-                    "Список песен (Страница ${currentPage + 1} из $totalPages)",
-                    formatTrackListPage(currentPage)
-                ).thenMany(
-                    Flux.fromIterable(listOf("➡", "⬅"))
-                        .flatMap { emoji ->
-                            message.removeReaction(
-                                ReactionEmoji.unicode(emoji),
-                                event.message.author.get().id
-                            )
-                        }
-                ).then()
-            } else {
-                Mono.empty()
-            }
-        }
-
-        return event.message.channel.flatMap {
-            messageService.createEmbedMessage(
-                event,
-                "Список песен (Страница ${currentPage + 1} из $totalPages)",
-                formatTrackListPage(currentPage)
-            ).flatMap { message ->
-                if (totalPages <= 1) {
-                    return@flatMap Mono.empty<Void>()
-                }
-
-                message.addReaction(ReactionEmoji.unicode("⬅"))
-                    .then(message.addReaction(ReactionEmoji.unicode("➡")))
-                    .thenMany(
-                        message.client.eventDispatcher.on(ReactionAddEvent::class.java)
-                            .filter { it.messageId == message.id }
-                            .filter { it.userId == event.message.author.get().id }
-                            .filter { it.emoji.asUnicodeEmoji().isPresent }.take(totalPages.toLong())
-                            .flatMap { reactionEvent -> handleReaction(message, reactionEvent) }
-                    ).then()
-            }
+        return event.message.channel.flatMap { channel ->
+            processPage(event, tracks, currentPage, tracksPerPage, totalPages, channel)
         }.onErrorResume {
             println("Error showTrackList: $it")
+            Mono.empty()
+        }
+    }
+
+    private fun processPage(
+        event: MessageCreateEvent,
+        tracks: List<AudioTrack>,
+        currentPage: Int,
+        tracksPerPage: Int,
+        totalPages: Int,
+        channel: MessageChannel
+    ): Mono<Void> {
+        return formatEmbedMessage(event, tracks, currentPage, tracksPerPage, totalPages).flatMap { message ->
+            if (totalPages <= 1) {
+                return@flatMap Mono.empty<Void>()
+            }
+            handlePageReactions(message, totalPages, currentPage, tracks, tracksPerPage, event, channel)
+        }
+    }
+
+    private fun handlePageReactions(
+        message: Message,
+        totalPages: Int,
+        currentPage: Int,
+        tracks: List<AudioTrack>,
+        tracksPerPage: Int,
+        event: MessageCreateEvent,
+        channel: MessageChannel
+    ): Mono<Void> {
+        return addReactions(message).thenMany(
+            handleReactions(
+                message,
+                totalPages,
+                currentPage,
+                tracks,
+                tracksPerPage,
+                event
+            )
+        ).then()
+    }
+
+    private fun getTotalPages(tracks: List<AudioTrack>, tracksPerPage: Int): Int {
+        return (tracks.size + tracksPerPage - 1) / tracksPerPage
+    }
+
+    private fun formatEmbedMessage(
+        event: MessageCreateEvent, tracks: List<AudioTrack>, currentPage: Int, tracksPerPage: Int, totalPages: Int
+    ): Mono<Message> {
+        return messageService.createEmbedMessage(
+            event,
+            "Список песен (Страница ${currentPage + 1} из $totalPages)",
+            formatTrackListPage(tracks, currentPage, tracksPerPage)
+        )
+    }
+
+    private fun addReactions(message: Message): Mono<Void> {
+        return message.addReaction(ReactionEmoji.unicode("⬅")).then(message.addReaction(ReactionEmoji.unicode("➡")))
+    }
+
+    private fun handleReactions(
+        message: Message,
+        totalPages: Int,
+        currentPage: Int,
+        tracks: List<AudioTrack>,
+        tracksPerPage: Int,
+        event: MessageCreateEvent
+    ): Flux<Void> {
+        return message.client.eventDispatcher.on(ReactionAddEvent::class.java).filter { it.messageId == message.id }
+            .filter { it.userId == event.message.author.get().id }.filter { it.emoji.asUnicodeEmoji().isPresent }
+            .take(totalPages.toLong()).flatMap { reactionEvent ->
+                handleReaction(
+                    message, reactionEvent, totalPages, currentPage, tracks, tracksPerPage, event
+                ).then(Mono.empty<Void>())
+            }
+    }
+
+    private fun formatTrackListPage(tracks: List<AudioTrack>, page: Int, tracksPerPage: Int): String {
+        val startIndex = page * tracksPerPage
+        return tracks.drop(startIndex).take(tracksPerPage).mapIndexed { index, track ->
+            "${startIndex + index + 1}. ${track.info.title}"
+        }.joinToString("\n")
+    }
+
+    private fun handleReaction(
+        message: Message,
+        reactionEvent: ReactionAddEvent,
+        totalPages: Int,
+        currentPage: Int,
+        tracks: List<AudioTrack>,
+        tracksPerPage: Int,
+        event: MessageCreateEvent
+    ): Mono<Void> {
+        var page = currentPage
+        val changePage = when (reactionEvent.emoji.asUnicodeEmoji().get().raw) {
+            "⬅" -> {
+                if (page > 0) {
+                    page--
+                    true
+                } else false
+            }
+
+            "➡" -> {
+                if (page < totalPages - 1) {
+                    page++
+                    true
+                } else false
+            }
+
+            else -> false
+        }
+
+        return if (changePage) {
+            messageService.editEmbedMessage(
+                message,
+                "Список песен (Страница ${page + 1} из $totalPages)",
+                formatTrackListPage(tracks, page, tracksPerPage)
+            ).thenMany(Flux.fromIterable(listOf("➡", "⬅")).flatMap { emoji ->
+                message.removeReaction(
+                    ReactionEmoji.unicode(emoji), event.message.author.get().id
+                )
+            }).then()
+        } else {
             Mono.empty()
         }
     }
@@ -228,9 +308,7 @@ class MusicService {
     }
 
     private fun processBotInServer(
-        event: MessageCreateEvent,
-        musicManager: GuildMusicManager,
-        link: String?
+        event: MessageCreateEvent, musicManager: GuildMusicManager, link: String?
     ): Mono<Void?> {
         return voiceChannelService.checkUserInVoiceChannelWithBot(event).flatMap { userInVoice ->
             if (!userInVoice) {
@@ -245,9 +323,7 @@ class MusicService {
     }
 
     private fun processBotNotInServer(
-        event: MessageCreateEvent,
-        musicManager: GuildMusicManager,
-        link: String?
+        event: MessageCreateEvent, musicManager: GuildMusicManager, link: String?
     ): Mono<Void?> {
         return voiceChannelService.checkUserInVoiceChannel(event).flatMap { userInVoice ->
             if (!userInVoice) {
@@ -266,22 +342,38 @@ class MusicService {
     }
 
     private fun processYoutubeLink(event: MessageCreateEvent, scheduler: TrackScheduler): Mono<Void?> {
-        return Mono.justOrEmpty(event.message.content).map { content ->
-            val command = content.split(" ")
-            if (command.size <= 1) return@map
-            val input = command.subList(1, command.size).joinToString(" ")
-            val youtubeVideoRegex = "^(https?://)?(www\\.)?(youtube\\.com/watch\\?v=|youtu\\.be/)[a-zA-Z0-9_-]+"
-            val youtubePlaylistRegex = "^(https?://)?(www\\.)?youtube\\.com/playlist\\?list=[a-zA-Z0-9_-]+"
-            if (!input.matches(Regex("$youtubeVideoRegex|$youtubePlaylistRegex"))) {
-                val youtubeSearchResult = youTubeImpl.searchYoutube(input)
-                if (youtubeSearchResult != null) {
-                    playerManager.loadItem(youtubeSearchResult, scheduler)
-                }
-            } else {
-                playerManager.loadItem(input, scheduler)
-            }
-        }.then()
+        val content = event.message.content.orEmpty()
+        if (content.isBlank()) return Mono.empty()
+
+        val command = content.split(" ")
+        if (command.size <= 1) return Mono.empty()
+
+        val input = command.subList(1, command.size).joinToString(" ")
+        return if (isValidYoutubeLink(input)) {
+            loadItem(input, scheduler)
+        } else {
+            searchAndLoadItem(input, scheduler)
+        }
     }
+
+    private fun isValidYoutubeLink(input: String): Boolean {
+        val simpleUrlRegex = "^(https?://)?(www\\.)?\\S+$"
+        return input.matches(Regex(simpleUrlRegex))
+    }
+
+    private fun loadItem(input: String, scheduler: TrackScheduler): Mono<Void?> {
+        playerManager.loadItem(input, scheduler)
+        return Mono.empty()
+    }
+
+    private fun searchAndLoadItem(input: String, scheduler: TrackScheduler): Mono<Void?> {
+        val youtubeSearchResult = youTubeImpl.searchYoutube(input)
+        if (youtubeSearchResult != null) {
+            loadItem(youtubeSearchResult, scheduler)
+        }
+        return Mono.empty()
+    }
+
 
     private fun loadMusic(link: String, scheduler: TrackScheduler): Mono<Void?> {
         return Mono.fromRunnable<Void> {
@@ -295,18 +387,20 @@ class MusicService {
     }
 
     private fun stopMusic(event: MessageCreateEvent, musicManager: GuildMusicManager): Mono<VoiceChannel?> {
-        return Mono.justOrEmpty(event.member.orElse(null)).flatMap { member ->
-            Mono.justOrEmpty(member?.voiceState?.block()).flatMap { voiceState ->
-                Mono.justOrEmpty(voiceState?.channel?.block()).doOnNext { channel ->
-                    channel?.let {
-                        voiceChannelService.disconnect(event).subscribe()
-                        musicManager.player.removeListener(musicManager.scheduler)
-                        musicManager.scheduler.clearQueue()
-                    }
-                }
-            }
+        val member = event.member.orElse(null)
+        val voiceState = member?.voiceState?.block()
+        val channel = voiceState?.channel?.block()
+
+        return if (channel != null) {
+            voiceChannelService.disconnect(event).subscribe()
+            musicManager.player.removeListener(musicManager.scheduler)
+            musicManager.scheduler.clearQueue()
+            Mono.just(channel)
+        } else {
+            Mono.empty()
         }
     }
+
 
     companion object {
         private const val DENIAL_GIF_LINK =
