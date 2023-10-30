@@ -14,12 +14,19 @@ import reactor.core.publisher.Mono
 import java.time.Duration
 import java.util.concurrent.BlockingQueue
 import java.util.concurrent.LinkedBlockingQueue
+import kotlin.properties.Delegates
 
 class TrackScheduler(
     private val player: AudioPlayer,
 ) : AudioLoadResultHandler, AudioEventAdapter() {
     var loop: Boolean = false
-    var playlistLoop: Boolean = false
+    var playlistLoop: Boolean by Delegates.observable(false) { _, _, _ ->
+        if (queue != null) {
+            if (currentTrack != null)
+                initialPlaylist.add(currentTrack!!)
+            initialPlaylist.addAll(queue.toList())
+        }
+    }
 
     var currentTrack: AudioTrack? = null
     var currentEvent: MessageCreateEvent? = null
@@ -30,7 +37,7 @@ class TrackScheduler(
     private var firstSong: Boolean = true
     private val messageService = Bot.serviceComponent.getMessageService()
     private var queue: BlockingQueue<AudioTrack> = LinkedBlockingQueue()
-    private var initialPlaylist: List<AudioTrack> = listOf()
+    private var initialPlaylist: MutableList<AudioTrack> = mutableListOf()
 
     fun nextTrack() {
         println("nextTrack")
@@ -42,9 +49,13 @@ class TrackScheduler(
 
     fun getFullTrackList(): List<AudioTrack> {
         val fullTrackList = mutableListOf<AudioTrack>()
-        currentTrack?.let { fullTrackList.add(it) }
-        fullTrackList.addAll(queue)
-        return fullTrackList
+        return if (playlistLoop) {
+            initialPlaylist
+        } else {
+            currentTrack?.let { fullTrackList.add(it) }
+            fullTrackList.addAll(queue)
+            fullTrackList
+        }
     }
 
     fun deleteTrack(index: Int): Boolean {
@@ -189,7 +200,6 @@ class TrackScheduler(
     override fun playlistLoaded(playlist: AudioPlaylist?) {
         playlist?.tracks?.let {
             queue.addAll(it)
-            initialPlaylist = it.toList()
         }
         if (currentTrack == null)
             nextTrack()
