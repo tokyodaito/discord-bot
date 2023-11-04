@@ -20,7 +20,7 @@ object GuildManager {
 
     fun getGuildMusicManager(guildId: Snowflake): GuildMusicManager {
         return musicManagers.computeIfAbsent(guildId) {
-            GuildMusicManager(guildId, playerManager)
+            GuildMusicManager(playerManager)
         }
     }
 

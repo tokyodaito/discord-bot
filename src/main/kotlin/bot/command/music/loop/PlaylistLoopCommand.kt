@@ -17,11 +17,11 @@ class PlaylistLoopCommand : Command {
         return Mono.fromCallable {
             musicManager.scheduler.playlistLoop = !musicManager.scheduler.playlistLoop
         }.flatMap {
-            if (musicManager.scheduler.playlistLoop) messageService.sendMessage(
+            if (musicManager.scheduler.playlistLoop) messageService.createEmbedMessage(
                 event,
                 "Циклический повтор плейлиста включен"
-            )
-            else messageService.sendMessage(event, "Циклический повтор плейлиста выключен")
+            ).then()
+            else messageService.createEmbedMessage(event, "Циклический повтор плейлиста выключен").then()
         }
     }
 }

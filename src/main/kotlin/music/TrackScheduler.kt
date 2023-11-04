@@ -150,7 +150,7 @@ class TrackScheduler(
         if (queue.offer(track)) {
             messageService.sendInformationAboutSong(event, track, loop, playlistLoop, true).subscribe()
         } else {
-            messageService.sendMessage(event, "Не удалось добавить в очередь").subscribe()
+            messageService.createEmbedMessage(event, "Не удалось добавить в очередь").subscribe()
         }
     }
 
@@ -208,7 +208,7 @@ class TrackScheduler(
     override fun noMatches() {
         println("No matches found for the given input")
         currentEvent?.let {
-            messageService.sendMessage(it, "Ошибка загрузки трека")
+            messageService.createEmbedMessage(it, "Ошибка загрузки трека")
                 .subscribe()
         }
     }
@@ -216,7 +216,7 @@ class TrackScheduler(
     override fun loadFailed(exception: FriendlyException) {
         println("Failed to load track: ${exception.message}")
         currentEvent?.let {
-            messageService.sendMessage(it, "Ошибка загрузки трека")
+            messageService.createEmbedMessage(it, "Ошибка загрузки трека")
                 .subscribe()
         }
     }

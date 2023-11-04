@@ -12,9 +12,9 @@ class NextTrackCommand : Command {
         return event?.let {
             Mono.fromCallable { Bot.serviceComponent.getMusicService().nextTrack(event) }.flatMap {
                 if (it) {
-                    messageService.sendMessage(event, "Включен следующий трек")
+                    messageService.createEmbedMessage(event, "Включен следующий трек").then()
                 } else {
-                    messageService.sendMessage(event, "Очередь пуста")
+                    messageService.createEmbedMessage(event, "Очередь пуста").then()
                 }
             }
         }
