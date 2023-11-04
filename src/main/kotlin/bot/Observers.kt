@@ -14,6 +14,7 @@ import reactor.core.scheduler.Schedulers
 import reactor.util.retry.Retry
 import service.GodmodeService
 import java.time.Duration
+import kotlin.random.Random
 
 internal class Observers(private val commands: MutableMap<String, Command>) {
     internal fun setEventObserver(client: GatewayDiscordClient) {
@@ -23,7 +24,15 @@ internal class Observers(private val commands: MutableMap<String, Command>) {
 
     private fun observeMessageEvents(client: GatewayDiscordClient) {
         client.eventDispatcher.on(MessageCreateEvent::class.java)
-            .flatMap { event -> processEvent(event) }
+            .flatMap { event ->
+                val guildId = event.guildId.orElse(null)
+                val musicManager = getGuildMusicManager(guildId)
+                if (!musicManager.checkFirstMessage()) {
+                    musicManager.updateFirstMessage(true)
+                    sendFirstMessage(event).subscribe()
+                }
+                processEvent(event)
+            }
             .subscribeOn(Schedulers.parallel())
             .onErrorResume {
                 println("Error observeMessageEvents: $it")
@@ -128,7 +137,18 @@ internal class Observers(private val commands: MutableMap<String, Command>) {
     private fun executeMatchingCommand(content: String, event: MessageCreateEvent): Mono<Void?> {
         return Flux.fromIterable(commands.entries)
             .filter { entry -> content.startsWith(Bot.prefix + entry.key, ignoreCase = true) }
-            .flatMap { entry -> entry.value.execute(event) }.next()
+            .flatMap { entry ->
+                entry.value.execute(event)?.then(
+                    Mono.defer {
+                        if (Random.nextInt(100) < 10) {
+                            sendBoostyMessage(event)
+                        } else {
+                            Mono.empty<Void>()
+                        }
+                    }
+                )
+            }
+            .next()
     }
 
 
@@ -178,5 +198,44 @@ internal class Observers(private val commands: MutableMap<String, Command>) {
             musicManager.player.removeListener(musicManager.scheduler)
             musicManager.scheduler.clearQueue()
         }.then()
+    }
+
+    private fun sendBoostyMessage(event: MessageCreateEvent): Mono<Void?> {
+        val reasons = listOf(
+            "Потому что здесь ты найдешь уникальный контент, который я создаю исключительно для своих подписчиков.",
+            "Это способ поддержать мой творческий путь и позволить мне продолжать делиться ценностями и знаниями.",
+            "Подписавшись, ты первым узнаешь о новых функциях и обновлениях, которые я внедряю.",
+            "Это отличная возможность для тебя предложить свои идеи и увидеть их реализацию.",
+            "Подписка дает тебе доступ к эксклюзивному сообществу единомышленников, где мы можем делиться опытом и мотивацией.",
+            "Ты будешь иметь возможность получать персональные советы и рекомендации по самообучению и продуктивности.",
+            "Твоя подписка поможет мне освободить больше времени для исследований и разработок, что в итоге приносит пользу всем пользователям.",
+            "Взаимодействие на платформе Boosty позволит тебе оставаться на связи со мной напрямую и влиять на контент.",
+            "Поддержка через Boosty — это простой способ сказать \"спасибо\" за работу, которую я вкладываю в создание бота и контента.",
+            "Это инвестиция в твое собственное развитие, поскольку контент, которым я делюсь, нацелен на обучение и вдохновение."
+        )
+
+        val randomReason = reasons[Random.nextInt(reasons.size)]
+
+        val messageService = Bot.serviceComponent.getMessageService()
+        return messageService.createEmbedMessage(
+            event,
+            "Подпишись на Boosty: https://www.youtube.com/watch?v=dQw4w9WgXcQ&pp=ygUXbmV2ZXIgZ29ubmEgZ2l2ZSB5b3UgdXA%3D",
+            "Почему? $randomReason"
+        ).then()
+    }
+
+    private fun sendFirstMessage(event: MessageCreateEvent): Mono<Void?> {
+        val messageService = Bot.serviceComponent.getMessageService()
+        return messageService.createEmbedMessage(
+            event,
+            "Приветствую!",
+            "Я — \"Большой брат\", музыкальный бот, который призван сделать пребывание здесь ещё более приятным. Знаешь что самое крутое? Я полностью бесплатный! \uD83C\uDF89\nМой создатель верит в свободу музыки для всех, и поэтому никаких подписок или скрытых платежей — просто настройся на правильный вайб и наслаждайся. Если тебе нравится, что я делаю, и ты хочешь узнать больше о моих функциях или о самом создателе, загляни на его страницу Boosty. Там ты найдешь массу интересного контента, советы по саморазвитию и многое другое. Поддержка через Boosty — отличный способ сказать \"спасибо\" и помочь проекту стать ещё лучше.\n" +
+                    "\n" +
+                    "Так что давай вместе сделаем этот сервер местом, где всегда звучит музыка и царит радость! \uD83C\uDFB6\n" +
+                    "\n" +
+                    "Если возникнут вопросы по моему функционалу или ты захочешь предложить новые идеи, просто напиши, и я буду рад помочь.\n" +
+                    "\n" +
+                    "Давай начнем нашу музыкальную авантюру! \uD83D\uDE80"
+        ).then()
     }
 }

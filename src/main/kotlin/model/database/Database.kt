@@ -7,10 +7,10 @@ import java.sql.Statement
 
 class Database {
     fun initDatabase() {
-        withConnection {
-            connection ->
+        withConnection { connection ->
             val statement: Statement = connection.createStatement()
             statement.execute("CREATE TABLE IF NOT EXISTS server_data (memberId TEXT PRIMARY KEY, favorites TEXT)")
+            statement.execute("CREATE TABLE IF NOT EXISTS guild_data (guildId TEXT PRIMARY KEY, first_message BOOLEAN NOT NULL DEFAULT FALSE)")
             connection.close()
         }
     }
@@ -30,6 +30,38 @@ class Database {
         } catch (e: SQLException) {
             e.printStackTrace()
             null
+        }
+    }
+
+    fun addGuild(guildId: String, firstMessage: Boolean) {
+        withConnection { connection ->
+            val preparedStatement =
+                connection.prepareStatement("INSERT INTO guild_data (guildId, first_message) VALUES (?, ?)")
+            preparedStatement.setString(1, guildId)
+            preparedStatement.setBoolean(2, firstMessage)
+            preparedStatement.executeUpdate()
+        }
+    }
+
+    fun getFirstMessage(guildId: String): Boolean {
+        return withConnection { connection ->
+            val preparedStatement =
+                connection.prepareStatement("SELECT first_message FROM guild_data WHERE guildId = ?")
+            preparedStatement.setString(1, guildId)
+            val resultSet = preparedStatement.executeQuery()
+            if (resultSet.next()) {
+                resultSet.getBoolean("first_message")
+            } else {
+                false
+            }
+        }
+    }
+
+    fun removeGuild(guildId: String) {
+        withConnection { connection ->
+            val preparedStatement = connection.prepareStatement("DELETE FROM guild_data WHERE guildId = ?")
+            preparedStatement.setString(1, guildId)
+            preparedStatement.executeUpdate()
         }
     }
 

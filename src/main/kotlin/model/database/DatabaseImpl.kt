@@ -28,6 +28,20 @@ class DatabaseImpl {
             .then()
     }
 
+    fun addGuild(guildId: String, firstMessage: Boolean): Mono<Void> {
+        return Mono.fromCallable {
+            Bot.databaseComponent.getDatabase().addGuild(guildId, firstMessage)
+        }
+            .handleError("addGuild")
+            .then()
+    }
+
+    fun getFirstMessage(guildId: String): Mono<Boolean> {
+        return Mono.fromCallable {
+            Bot.databaseComponent.getDatabase().getFirstMessage(guildId)
+        }.handleError("getFirstMessage")
+    }
+
     private fun isValidURL(link: String): Boolean {
         val regex = "^(https?|ftp)://[^\\s/$.?#].\\S*$"
         return link.matches(Regex(regex))
