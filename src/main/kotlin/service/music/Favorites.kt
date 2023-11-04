@@ -21,7 +21,7 @@ internal class Favorites {
             .flatMap { content ->
                 if (isYoutubeLink(content) && userId != null) {
                     addToFavorites(userId, content)
-                    messageService.sendMessage(event, "Трек добавлен в избранное")
+                    sendMessage(event, "Трек добавлен в избранное")
                 } else {
                     sendErrorMessage(event, "Неправильная ссылка")
                 }
@@ -39,7 +39,7 @@ internal class Favorites {
         return getFavorites(memberId)
             .flatMap { favorites ->
                 if (favorites?.isEmpty() != false) {
-                    messageService.sendMessage(event, "У вас нет сохраненных песен").then()
+                    sendMessage(event, "У вас нет сохраненных песен").then()
                 } else {
                     displayFavorites(event, favorites)
                 }
@@ -182,7 +182,7 @@ internal class Favorites {
             .flatMap { favorites ->
                 return@flatMap if (favorites.isNullOrEmpty() || index > favorites.size) {
                     val errorMessage = "Неправильный индекс или не найден трек"
-                    messageService.sendMessage(event, errorMessage).thenReturn(null)
+                    sendMessage(event, errorMessage).thenReturn(null)
                 } else {
                     Mono.just(favorites[index - 1])
                 }
@@ -190,7 +190,7 @@ internal class Favorites {
     }
 
     private fun sendErrorMessage(event: MessageCreateEvent, message: String): Mono<Void> {
-        return messageService.sendMessage(event, message).then()
+        return sendMessage(event, message).then()
     }
 
     private fun removeFavoriteAtIndex(memberId: Snowflake, index: Int, event: MessageCreateEvent): Mono<Void> {
@@ -204,7 +204,7 @@ internal class Favorites {
                     else -> {
                         val link = favorites[index - 1]
                         databaseImpl.removeFavorite(memberId, link)
-                            .then(messageService.sendMessage(event, "Трек удален успешно"))
+                            .then(sendMessage(event, "Трек удален успешно"))
                     }
                 }
             }
@@ -218,10 +218,9 @@ internal class Favorites {
         val input = musicManager.scheduler.currentTrack?.info?.identifier
         return if (input != null && userId != null) {
             databaseImpl.addFavorite(userId, "https://www.youtube.com/watch?v=$input")
-            messageService.sendMessage(event, "Трек добавлен в избранное")
+            sendMessage(event, "Трек добавлен в избранное")
         } else {
-            val denialGifLink = "https://tenor.com/view/%D0%BF%D0%BE%D1%85%D1%83%D0%B9-death-error-gif-20558982"
-            messageService.sendMessage(event, denialGifLink)
+            sendMessage(event, "Вы ничего не ввели")
         }.then()
     }
 
@@ -264,5 +263,9 @@ internal class Favorites {
 
     enum class Direction {
         LEFT, RIGHT, NONE
+    }
+
+    private fun sendMessage(event: MessageCreateEvent, message: String): Mono<Void?> {
+        return messageService.createEmbedMessage(event, message).then()
     }
 }

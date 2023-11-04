@@ -48,7 +48,7 @@ class MusicService {
 
         return when {
             args.size > 1 -> handleJumpWithArgs(event, musicManager, args)
-            else -> messageService.sendMessage(event, "Укажите индекс трека")
+            else -> sendMessage(event, "Укажите индекс трека").then()
         }
     }
 
@@ -61,7 +61,7 @@ class MusicService {
         return if (index != null && musicManager.scheduler.jumpToTrack(index)) {
             handleSuccessfulJump(event, musicManager, index)
         } else {
-            messageService.sendMessage(event, INVALID_INDEX)
+            sendMessage(event, INVALID_INDEX).then()
         }
     }
 
@@ -71,7 +71,7 @@ class MusicService {
         index: Int
     ): Mono<Void?> {
         val track = musicManager.scheduler.getFullTrackList()[index - 1]
-        return messageService.sendMessage(event, "Перешёл к треку с индексом $index").then(
+        return sendMessage(event, "Перешёл к треку с индексом $index").then(
             messageService.sendInformationAboutSong(
                 event, track, musicManager.scheduler.loop,
                 musicManager.scheduler.playlistLoop, false
@@ -95,7 +95,7 @@ class MusicService {
         isInSameChannel: Boolean, event: MessageCreateEvent, musicManager: GuildMusicManager
     ): Mono<Void?> {
         return if (!isInSameChannel) {
-            messageService.sendMessage(event, DENIAL_GIF_LINK)
+            sendMessage(event, "Вы не находитесь в голосовом канале")
         } else {
             stopMusicAndSendMessages(event, musicManager)
         }
@@ -104,8 +104,9 @@ class MusicService {
     private fun stopMusicAndSendMessages(
         event: MessageCreateEvent, musicManager: GuildMusicManager
     ): Mono<Void?> {
-        return stopMusic(event, musicManager).then(messageService.sendMessage(event, "Воспроизведение остановлено"))
-            .then(messageService.sendMessage(event, ACCESS_GIF_LINK))
+        return stopMusic(event, musicManager).then(
+            sendMessage(event, "Воспроизведение остановлено")
+        )
     }
 
     fun showTrackList(event: MessageCreateEvent): Mono<Void> {
@@ -267,12 +268,12 @@ class MusicService {
             if (args.size > 1) {
                 val index = args[1].toIntOrNull()
                 if (index != null && musicManager.scheduler.deleteTrack(index)) {
-                    messageService.sendMessage(event, "Трек удален")
+                    sendMessage(event, "Трек удален")
                 } else {
-                    messageService.sendMessage(event, INVALID_INDEX)
+                    sendMessage(event, INVALID_INDEX)
                 }
             } else {
-                messageService.sendMessage(event, INVALID_INDEX)
+                sendMessage(event, INVALID_INDEX)
             }
         }
     }
@@ -312,7 +313,7 @@ class MusicService {
     ): Mono<Void?> {
         return voiceChannelService.checkUserInVoiceChannelWithBot(event).flatMap { userInVoice ->
             if (!userInVoice) {
-                return@flatMap messageService.sendMessage(event, DENIAL_GIF_LINK)
+                return@flatMap sendMessage(event, "Вы не в голосовом канале")
             }
             if (link != null) {
                 loadMusic(link, musicManager.scheduler)
@@ -327,7 +328,7 @@ class MusicService {
     ): Mono<Void?> {
         return voiceChannelService.checkUserInVoiceChannel(event).flatMap { userInVoice ->
             if (!userInVoice) {
-                return@flatMap messageService.sendMessage(event, DENIAL_GIF_LINK)
+                return@flatMap sendMessage(event, "Вы не в голосовом канале")
             }
             voiceChannelService.join(event).then(
                 if (link != null) {
@@ -401,12 +402,11 @@ class MusicService {
         }
     }
 
+    private fun sendMessage(event: MessageCreateEvent, message: String): Mono<Void?> {
+        return messageService.createEmbedMessage(event, message).then()
+    }
 
     companion object {
-        private const val DENIAL_GIF_LINK =
-            "https://tenor.com/view/%D0%BF%D0%BE%D1%85%D1%83%D0%B9-death-error-gif-20558982"
-        private const val ACCESS_GIF_LINK = "https://tenor.com/view/chatviblyadok-gif-25739796"
-
         private const val INVALID_INDEX = "Неверный индекс"
     }
 }

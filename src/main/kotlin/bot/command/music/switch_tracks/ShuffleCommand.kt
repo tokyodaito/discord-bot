@@ -13,12 +13,12 @@ class ShuffleCommand : Command {
         val guildId = event?.guildId?.orElse(null) ?: return Mono.empty()
         val musicManager = GuildManager.getGuildMusicManager(guildId)
 
-        return messageService.sendMessage(event, "Очередь перемешана").let {
+        return messageService.createEmbedMessage(event, "Очередь перемешана").let {
             Mono.fromCallable { musicManager.scheduler.shuffleQueue() }.then(it)
                 .onErrorResume {
                     println("Error shuffleQueue: $it")
                     Mono.empty()
-                }
+                }.then()
         }
     }
 }
