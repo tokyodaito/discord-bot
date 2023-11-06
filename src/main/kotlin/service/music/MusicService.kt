@@ -48,7 +48,7 @@ class MusicService {
 
         return when {
             args.size > 1 -> handleJumpWithArgs(event, musicManager, args)
-            else -> sendMessage(event, "Укажите индекс трека").then()
+            else -> sendMessage(event, TRACK_INDEX_NOTIFICATION).then()
         }
     }
 
@@ -71,7 +71,7 @@ class MusicService {
         index: Int
     ): Mono<Void?> {
         val track = musicManager.scheduler.getFullTrackList()[index - 1]
-        return sendMessage(event, "Перешёл к треку с индексом $index").then(
+        return sendMessage(event, "$TRACK_SWITCH_NOTIFICATION $index").then(
             messageService.sendInformationAboutSong(
                 event, track, musicManager.scheduler.loop,
                 musicManager.scheduler.playlistLoop, false
@@ -95,7 +95,7 @@ class MusicService {
         isInSameChannel: Boolean, event: MessageCreateEvent, musicManager: GuildMusicManager
     ): Mono<Void?> {
         return if (!isInSameChannel) {
-            sendMessage(event, "Вы не находитесь в голосовом канале")
+            sendMessage(event, NOT_IN_VOICE_CHANNEL)
         } else {
             stopMusicAndSendMessages(event, musicManager)
         }
@@ -105,7 +105,7 @@ class MusicService {
         event: MessageCreateEvent, musicManager: GuildMusicManager
     ): Mono<Void?> {
         return stopMusic(event, musicManager).then(
-            sendMessage(event, "Воспроизведение остановлено")
+            sendMessage(event, PLAYBACK_STOPPED)
         )
     }
 
@@ -171,7 +171,7 @@ class MusicService {
     ): Mono<Message> {
         return messageService.createEmbedMessage(
             event,
-            "Список песен (Страница ${currentPage + 1} из $totalPages)",
+            "$SONGS_LIST (Страница ${currentPage + 1} из $totalPages)",
             formatTrackListPage(tracks, currentPage, tracksPerPage)
         )
     }
@@ -235,7 +235,7 @@ class MusicService {
         return if (changePage) {
             messageService.editEmbedMessage(
                 message,
-                "Список песен (Страница ${page + 1} из $totalPages)",
+                "$SONGS_LIST (Страница ${page + 1} из $totalPages)",
                 formatTrackListPage(tracks, page, tracksPerPage)
             ).thenMany(Flux.fromIterable(listOf("➡", "⬅")).flatMap { emoji ->
                 message.removeReaction(
@@ -268,7 +268,7 @@ class MusicService {
             if (args.size > 1) {
                 val index = args[1].toIntOrNull()
                 if (index != null && musicManager.scheduler.deleteTrack(index)) {
-                    sendMessage(event, "Трек удален")
+                    sendMessage(event, TRACK_REMOVED)
                 } else {
                     sendMessage(event, INVALID_INDEX)
                 }
@@ -313,7 +313,7 @@ class MusicService {
     ): Mono<Void?> {
         return voiceChannelService.checkUserInVoiceChannelWithBot(event).flatMap { userInVoice ->
             if (!userInVoice) {
-                return@flatMap sendMessage(event, "Вы не в голосовом канале")
+                return@flatMap sendMessage(event, NOT_IN_VOICE_CHANNEL)
             }
             if (link != null) {
                 loadMusic(link, musicManager.scheduler)
@@ -328,7 +328,7 @@ class MusicService {
     ): Mono<Void?> {
         return voiceChannelService.checkUserInVoiceChannel(event).flatMap { userInVoice ->
             if (!userInVoice) {
-                return@flatMap sendMessage(event, "Вы не в голосовом канале")
+                return@flatMap sendMessage(event, NOT_IN_VOICE_CHANNEL)
             }
             voiceChannelService.join(event).then(
                 if (link != null) {
@@ -407,6 +407,12 @@ class MusicService {
     }
 
     companion object {
-        private const val INVALID_INDEX = "Неверный индекс"
+        const val TRACK_INDEX_NOTIFICATION = "🔢 Укажите индекс трека"
+        const val TRACK_SWITCH_NOTIFICATION = "⏭ Перешёл к треку с индексом "
+        const val NOT_IN_VOICE_CHANNEL = "🚫 Вы не находитесь в голосовом канале"
+        const val PLAYBACK_STOPPED = "⏹ Воспроизведение остановлено"
+        const val SONGS_LIST = "📜 Список песен"
+        const val INVALID_INDEX = "❌ Неверный индекс"
+        const val TRACK_REMOVED = "🗑 Трек удален"
     }
 }
