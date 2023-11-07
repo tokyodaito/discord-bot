@@ -27,8 +27,8 @@ internal class Observers(private val commands: MutableMap<String, Command>) {
             .flatMap { event ->
                 val guildId = event.guildId.orElse(null)
                 val musicManager = getGuildMusicManager(guildId)
-                if (!musicManager.checkFirstMessage()) {
-                    musicManager.updateFirstMessage(true)
+                if (!musicManager.checkExistsGuild()) {
+                    musicManager.addGuild()
                     sendFirstMessage(event).subscribe()
                 }
                 processEvent(event)
