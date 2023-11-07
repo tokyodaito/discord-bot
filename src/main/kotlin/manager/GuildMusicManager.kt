@@ -24,19 +24,19 @@ class GuildMusicManager(
     @Volatile
     private var firstMessageChecked = false
 
-    fun checkFirstMessage(): Boolean {
+    fun checkExistsGuild(): Boolean {
         if (!firstMessageChecked) {
             firstMessageChecked = true
-            Bot.databaseComponent.getDatabaseImpl().getFirstMessage(guildId.toString()).doOnNext {
+            Bot.databaseComponent.getDatabaseImpl().existsGuild(guildId.toString()).doOnNext {
                 firstMessage = it
-            }
+            }.subscribe()
         }
         return firstMessage
     }
 
-    fun updateFirstMessage(statusFirstMessage: Boolean) {
-        Bot.databaseComponent.getDatabaseImpl().addGuild(guildId.toString(), statusFirstMessage)
-        firstMessage = statusFirstMessage
+    fun addGuild() {
+        Bot.databaseComponent.getDatabaseImpl().addGuild(guildId.toString())
+        firstMessage = true
         firstMessageChecked = true
     }
 }

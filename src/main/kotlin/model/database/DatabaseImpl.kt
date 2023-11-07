@@ -12,8 +12,7 @@ class DatabaseImpl {
             } else {
                 println("Provided link is invalid.")
             }
-        }.handleError("addFavorite")
-            .subscribe()
+        }.handleError("addFavorite").subscribe()
     }
 
     fun getFavorites(memberId: Snowflake): Mono<List<String>?> {
@@ -24,21 +23,18 @@ class DatabaseImpl {
 
     fun removeFavorite(memberId: Snowflake, link: String): Mono<Void> {
         return Mono.fromCallable { Bot.databaseComponent.getDatabase().removeServerFavorite(memberId.toString(), link) }
-            .handleError("removeFavorite")
-            .then()
+            .handleError("removeFavorite").then()
     }
 
-    fun addGuild(guildId: String, firstMessage: Boolean): Mono<Void> {
-        return Mono.fromCallable {
-            Bot.databaseComponent.getDatabase().addGuild(guildId, firstMessage)
-        }
-            .handleError("addGuild")
-            .then()
+    fun addGuild(guildId: String) {
+        Mono.fromCallable {
+            Bot.databaseComponent.getDatabase().addGuild(guildId)
+        }.handleError("addGuild").subscribe()
     }
 
-    fun getFirstMessage(guildId: String): Mono<Boolean> {
+    fun existsGuild(guildId: String): Mono<Boolean> {
         return Mono.fromCallable {
-            Bot.databaseComponent.getDatabase().getFirstMessage(guildId)
+            Bot.databaseComponent.getDatabase().existsGuild(guildId)
         }.handleError("getFirstMessage")
     }
 

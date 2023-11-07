@@ -16,8 +16,9 @@ class LoopCommand : Command {
 
         return if (musicManager.scheduler.currentTrack != null) {
             Mono.fromCallable {
-                if (musicManager.scheduler.loop) messageService.createEmbedMessage(event, "Повтор включен").subscribe()
-                else messageService.createEmbedMessage(event, "Повтор выключен").subscribe()
+                if (musicManager.scheduler.loop) messageService.createEmbedMessage(event, "\uD83D\uDD0A Повтор включен")
+                    .subscribe()
+                else messageService.createEmbedMessage(event, "\uD83D\uDD07 Повтор выключен").subscribe()
             }.then(
                 messageService.sendInformationAboutSong(
                     event,

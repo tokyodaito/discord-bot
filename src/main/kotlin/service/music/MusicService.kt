@@ -1,19 +1,18 @@
 package service.music
 
 import bot.Bot
-import com.sedmelluq.discord.lavaplayer.track.AudioTrack
 import discord4j.core.event.domain.message.MessageCreateEvent
 import discord4j.core.event.domain.message.ReactionAddEvent
 import discord4j.core.`object`.entity.Message
-import discord4j.core.`object`.entity.channel.MessageChannel
 import discord4j.core.`object`.entity.channel.VoiceChannel
 import discord4j.core.`object`.reaction.ReactionEmoji
 import manager.GuildManager.getGuildMusicManager
 import manager.GuildManager.playerManager
 import manager.GuildMusicManager
 import music.TrackScheduler
-import reactor.core.publisher.Flux
 import reactor.core.publisher.Mono
+import java.lang.Integer.min
+import java.util.concurrent.atomic.AtomicInteger
 
 class MusicService {
     private val youTubeImpl = Bot.remoteComponent.getYouTubeImpl()
@@ -48,7 +47,7 @@ class MusicService {
 
         return when {
             args.size > 1 -> handleJumpWithArgs(event, musicManager, args)
-            else -> sendMessage(event, "Укажите индекс трека").then()
+            else -> sendMessage(event, TRACK_INDEX_NOTIFICATION).then()
         }
     }
 
@@ -71,7 +70,7 @@ class MusicService {
         index: Int
     ): Mono<Void?> {
         val track = musicManager.scheduler.getFullTrackList()[index - 1]
-        return sendMessage(event, "Перешёл к треку с индексом $index").then(
+        return sendMessage(event, "$TRACK_SWITCH_NOTIFICATION $index").then(
             messageService.sendInformationAboutSong(
                 event, track, musicManager.scheduler.loop,
                 musicManager.scheduler.playlistLoop, false
@@ -95,7 +94,7 @@ class MusicService {
         isInSameChannel: Boolean, event: MessageCreateEvent, musicManager: GuildMusicManager
     ): Mono<Void?> {
         return if (!isInSameChannel) {
-            sendMessage(event, "Вы не находитесь в голосовом канале")
+            sendMessage(event, NOT_IN_VOICE_CHANNEL)
         } else {
             stopMusicAndSendMessages(event, musicManager)
         }
@@ -105,146 +104,69 @@ class MusicService {
         event: MessageCreateEvent, musicManager: GuildMusicManager
     ): Mono<Void?> {
         return stopMusic(event, musicManager).then(
-            sendMessage(event, "Воспроизведение остановлено")
+            sendMessage(event, PLAYBACK_STOPPED)
         )
     }
 
     fun showTrackList(event: MessageCreateEvent): Mono<Void> {
-        val guildId = event.guildId.orElse(null) ?: return Mono.empty()
-        val musicManager = getGuildMusicManager(guildId)
+        val musicManager = getGuildMusicManager(event)
         val tracks = musicManager.scheduler.getFullTrackList()
         val tracksPerPage = 10
-        val totalPages = getTotalPages(tracks, tracksPerPage)
-        val currentPage = 0
+        val totalPages = (tracks.size + tracksPerPage - 1) / tracksPerPage
+        val currentPage = AtomicInteger(0)
 
-        return event.message.channel.flatMap { channel ->
-            processPage(event, tracks, currentPage, tracksPerPage, totalPages, channel)
-        }.onErrorResume {
-            println("Error showTrackList: $it")
-            Mono.empty()
+        fun formatTrackListPage(page: Int): String {
+            val startIndex = page * tracksPerPage
+            val endIndex = min(startIndex + tracksPerPage, tracks.size)
+            return tracks.subList(startIndex, endIndex).mapIndexed { index, track ->
+                "${startIndex + index + 1}. ${track.info.title}"
+            }.joinToString("\n")
         }
-    }
 
-    private fun processPage(
-        event: MessageCreateEvent,
-        tracks: List<AudioTrack>,
-        currentPage: Int,
-        tracksPerPage: Int,
-        totalPages: Int,
-        channel: MessageChannel
-    ): Mono<Void> {
-        return formatEmbedMessage(event, tracks, currentPage, tracksPerPage, totalPages).flatMap { message ->
-            if (totalPages <= 1) {
-                return@flatMap Mono.empty<Void>()
-            }
-            handlePageReactions(message, totalPages, currentPage, tracks, tracksPerPage, event, channel)
-        }
-    }
-
-    private fun handlePageReactions(
-        message: Message,
-        totalPages: Int,
-        currentPage: Int,
-        tracks: List<AudioTrack>,
-        tracksPerPage: Int,
-        event: MessageCreateEvent,
-        channel: MessageChannel
-    ): Mono<Void> {
-        return addReactions(message).thenMany(
-            handleReactions(
-                message,
-                totalPages,
-                currentPage,
-                tracks,
-                tracksPerPage,
-                event
+        fun sendInitialEmbed(): Mono<Message> {
+            return messageService.createEmbedMessage(
+                event,
+                title = "$SONGS_LIST (Страница ${currentPage.get() + 1} из $totalPages)",
+                description = formatTrackListPage(currentPage.get())
             )
-        ).then()
-    }
-
-    private fun getTotalPages(tracks: List<AudioTrack>, tracksPerPage: Int): Int {
-        return (tracks.size + tracksPerPage - 1) / tracksPerPage
-    }
-
-    private fun formatEmbedMessage(
-        event: MessageCreateEvent, tracks: List<AudioTrack>, currentPage: Int, tracksPerPage: Int, totalPages: Int
-    ): Mono<Message> {
-        return messageService.createEmbedMessage(
-            event,
-            "Список песен (Страница ${currentPage + 1} из $totalPages)",
-            formatTrackListPage(tracks, currentPage, tracksPerPage)
-        )
-    }
-
-    private fun addReactions(message: Message): Mono<Void> {
-        return message.addReaction(ReactionEmoji.unicode("⬅")).then(message.addReaction(ReactionEmoji.unicode("➡")))
-    }
-
-    private fun handleReactions(
-        message: Message,
-        totalPages: Int,
-        currentPage: Int,
-        tracks: List<AudioTrack>,
-        tracksPerPage: Int,
-        event: MessageCreateEvent
-    ): Flux<Void> {
-        return message.client.eventDispatcher.on(ReactionAddEvent::class.java).filter { it.messageId == message.id }
-            .filter { it.userId == event.message.author.get().id }.filter { it.emoji.asUnicodeEmoji().isPresent }
-            .take(totalPages.toLong()).flatMap { reactionEvent ->
-                handleReaction(
-                    message, reactionEvent, totalPages, currentPage, tracks, tracksPerPage, event
-                ).then(Mono.empty<Void>())
-            }
-    }
-
-    private fun formatTrackListPage(tracks: List<AudioTrack>, page: Int, tracksPerPage: Int): String {
-        val startIndex = page * tracksPerPage
-        return tracks.drop(startIndex).take(tracksPerPage).mapIndexed { index, track ->
-            "${startIndex + index + 1}. ${track.info.title}"
-        }.joinToString("\n")
-    }
-
-    private fun handleReaction(
-        message: Message,
-        reactionEvent: ReactionAddEvent,
-        totalPages: Int,
-        currentPage: Int,
-        tracks: List<AudioTrack>,
-        tracksPerPage: Int,
-        event: MessageCreateEvent
-    ): Mono<Void> {
-        var page = currentPage
-        val changePage = when (reactionEvent.emoji.asUnicodeEmoji().get().raw) {
-            "⬅" -> {
-                if (page > 0) {
-                    page--
-                    true
-                } else false
-            }
-
-            "➡" -> {
-                if (page < totalPages - 1) {
-                    page++
-                    true
-                } else false
-            }
-
-            else -> false
         }
 
-        return if (changePage) {
-            messageService.editEmbedMessage(
-                message,
-                "Список песен (Страница ${page + 1} из $totalPages)",
-                formatTrackListPage(tracks, page, tracksPerPage)
-            ).thenMany(Flux.fromIterable(listOf("➡", "⬅")).flatMap { emoji ->
-                message.removeReaction(
-                    ReactionEmoji.unicode(emoji), event.message.author.get().id
+        fun addReactionsToMessage(message: Message): Mono<Void> {
+            if (totalPages <= 1) {
+                return Mono.empty()
+            }
+
+            return message.addReaction(ReactionEmoji.unicode("⬅"))
+                .then(message.addReaction(ReactionEmoji.unicode("➡")))
+                .then()
+        }
+
+        fun processReactionEvents(message: Message): Mono<Void> {
+            return message.client.eventDispatcher.on(ReactionAddEvent::class.java)
+                .filter { it.messageId == message.id }
+                .filter { it.userId == event.message.author.get().id }
+                .filter { it.emoji.asUnicodeEmoji().isPresent }
+                .flatMap { reactionEvent ->
+                    val current = currentPage.get()
+                    when (reactionEvent.emoji.asUnicodeEmoji().get()) {
+                        ReactionEmoji.unicode("⬅") -> if (current > 0) currentPage.decrementAndGet()
+                        ReactionEmoji.unicode("➡") -> if (current < totalPages - 1) currentPage.incrementAndGet()
+                    }
+                    messageService.editEmbedMessage(
+                        message,
+                        title = "$SONGS_LIST (Страница ${currentPage.get() + 1} из $totalPages)",
+                        description = formatTrackListPage(currentPage.get())
+                    )
+                }.then()
+        }
+
+        return sendInitialEmbed()
+            .flatMap {
+                addReactionsToMessage(it).then(
+                    processReactionEvents(it)
                 )
-            }).then()
-        } else {
-            Mono.empty()
-        }
+            }
+            .then()
     }
 
 
@@ -268,7 +190,7 @@ class MusicService {
             if (args.size > 1) {
                 val index = args[1].toIntOrNull()
                 if (index != null && musicManager.scheduler.deleteTrack(index)) {
-                    sendMessage(event, "Трек удален")
+                    sendMessage(event, TRACK_REMOVED)
                 } else {
                     sendMessage(event, INVALID_INDEX)
                 }
@@ -313,7 +235,7 @@ class MusicService {
     ): Mono<Void?> {
         return voiceChannelService.checkUserInVoiceChannelWithBot(event).flatMap { userInVoice ->
             if (!userInVoice) {
-                return@flatMap sendMessage(event, "Вы не в голосовом канале")
+                return@flatMap sendMessage(event, NOT_IN_VOICE_CHANNEL)
             }
             if (link != null) {
                 loadMusic(link, musicManager.scheduler)
@@ -328,7 +250,7 @@ class MusicService {
     ): Mono<Void?> {
         return voiceChannelService.checkUserInVoiceChannel(event).flatMap { userInVoice ->
             if (!userInVoice) {
-                return@flatMap sendMessage(event, "Вы не в голосовом канале")
+                return@flatMap sendMessage(event, NOT_IN_VOICE_CHANNEL)
             }
             voiceChannelService.join(event).then(
                 if (link != null) {
@@ -407,6 +329,12 @@ class MusicService {
     }
 
     companion object {
-        private const val INVALID_INDEX = "Неверный индекс"
+        const val TRACK_INDEX_NOTIFICATION = "🔢 Укажите индекс трека"
+        const val TRACK_SWITCH_NOTIFICATION = "⏭ Перешёл к треку с индексом "
+        const val NOT_IN_VOICE_CHANNEL = "🚫 Вы не находитесь в голосовом канале"
+        const val PLAYBACK_STOPPED = "⏹ Воспроизведение остановлено"
+        const val SONGS_LIST = "📜 Список песен"
+        const val INVALID_INDEX = "❌ Неверный индекс"
+        const val TRACK_REMOVED = "🗑 Трек удален"
     }
 }

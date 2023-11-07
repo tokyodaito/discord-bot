@@ -17,6 +17,7 @@ class GodmodeService {
         }
     }
 
+
     private fun isGodModeUser(senderId: String?): Boolean {
         return senderId == godModeUserId
     }

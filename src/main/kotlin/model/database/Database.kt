@@ -10,7 +10,7 @@ class Database {
         withConnection { connection ->
             val statement: Statement = connection.createStatement()
             statement.execute("CREATE TABLE IF NOT EXISTS server_data (memberId TEXT PRIMARY KEY, favorites TEXT)")
-            statement.execute("CREATE TABLE IF NOT EXISTS guild_data (guildId TEXT PRIMARY KEY, first_message BOOLEAN NOT NULL DEFAULT FALSE)")
+            statement.execute("CREATE TABLE IF NOT EXISTS guild_data (guildId TEXT PRIMARY KEY)")
             connection.close()
         }
     }
@@ -33,35 +33,23 @@ class Database {
         }
     }
 
-    fun addGuild(guildId: String, firstMessage: Boolean) {
+    fun addGuild(guildId: String) {
         withConnection { connection ->
-            val preparedStatement =
-                connection.prepareStatement("INSERT INTO guild_data (guildId, first_message) VALUES (?, ?)")
-            preparedStatement.setString(1, guildId)
-            preparedStatement.setBoolean(2, firstMessage)
-            preparedStatement.executeUpdate()
-        }
-    }
-
-    fun getFirstMessage(guildId: String): Boolean {
-        return withConnection { connection ->
-            val preparedStatement =
-                connection.prepareStatement("SELECT first_message FROM guild_data WHERE guildId = ?")
-            preparedStatement.setString(1, guildId)
-            val resultSet = preparedStatement.executeQuery()
-            if (resultSet.next()) {
-                resultSet.getBoolean("first_message")
-            } else {
-                false
+            val sql = "INSERT OR REPLACE INTO guild_data (guildId) VALUES (?)"
+            connection.prepareStatement(sql).use { preparedStatement ->
+                preparedStatement.setString(1, guildId)
+                preparedStatement.executeUpdate()
             }
         }
     }
 
-    fun removeGuild(guildId: String) {
-        withConnection { connection ->
-            val preparedStatement = connection.prepareStatement("DELETE FROM guild_data WHERE guildId = ?")
+    fun existsGuild(guildId: String): Boolean {
+        return withConnection { connection ->
+            val preparedStatement =
+                connection.prepareStatement("SELECT 1 FROM guild_data WHERE guildId = ?")
             preparedStatement.setString(1, guildId)
-            preparedStatement.executeUpdate()
+            val resultSet = preparedStatement.executeQuery()
+            resultSet.next()
         }
     }
 
