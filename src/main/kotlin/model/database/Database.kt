@@ -53,15 +53,6 @@ class Database {
         }
     }
 
-
-    fun removeGuild(guildId: String) {
-        withConnection { connection ->
-            val preparedStatement = connection.prepareStatement("DELETE FROM guild_data WHERE guildId = ?")
-            preparedStatement.setString(1, guildId)
-            preparedStatement.executeUpdate()
-        }
-    }
-
     fun removeServerFavorite(memberId: String, favoriteToRemove: String) {
         val existingFavorites = loadServerFavorites(memberId)?.toMutableList() ?: mutableListOf()
         existingFavorites.remove(favoriteToRemove)

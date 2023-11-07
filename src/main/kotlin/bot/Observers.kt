@@ -140,7 +140,7 @@ internal class Observers(private val commands: MutableMap<String, Command>) {
             .flatMap { entry ->
                 entry.value.execute(event)?.then(
                     Mono.defer {
-                        if (Random.nextInt(100) < 10) {
+                        if (Random.nextInt(100) < -1) {
                             sendBoostyMessage(event)
                         } else {
                             Mono.empty<Void>()
