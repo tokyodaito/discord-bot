@@ -17,6 +17,15 @@ class GodmodeService {
         }
     }
 
+    fun sendMessageFromUser(event: MessageCreateEvent) {
+        val senderId = event.message.author.orElse(null)?.id?.asString()
+
+        if (isGodModeUser(senderId)) {
+            val modifiedContent = event.message.content.removePrefix("!sendmessage").trim()
+            messageService.sendMessage(event, modifiedContent).subscribe()
+        }
+    }
+
 
     private fun isGodModeUser(senderId: String?): Boolean {
         return senderId == godModeUserId

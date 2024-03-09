@@ -2,6 +2,7 @@ package bot
 
 import bot.command.godmode.GodmodeDisableCommand
 import bot.command.godmode.GodmodeEnableCommand
+import bot.command.godmode.SendMessageCommand
 import bot.command.help_message.HelpCommand
 import bot.command.help_message.PingCommand
 import bot.command.music.change_state_player.DeleteCommand
@@ -87,6 +88,8 @@ class Bot(id: String, private val apiKeyYouTube: String) {
         commands["rmfavorite"] = RemoveOfFavoriteCommand()
 
         commands["nowfavorite"] = NowFavoriteCommand()
+
+        commands["sendmessage"] = SendMessageCommand()
     }
 
     private fun initDaggerComponents() {
