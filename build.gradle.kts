@@ -13,6 +13,7 @@ version = "1.0-SNAPSHOT"
 
 repositories {
     mavenCentral()
+    maven("https://maven.lavalink.dev/snapshots")
 
     maven {
         setUrl("https://jitpack.io")
@@ -42,7 +43,7 @@ kapt {
 dependencies {
     testImplementation(kotlin("test"))
     implementation("com.discord4j:discord4j-core:3.2.5")
-    implementation("dev.arbjerg:lavaplayer:2.0.1")
+    implementation("dev.arbjerg:lavaplayer:727959e9f621fc457b3a5adafcfffb55fdeaa538-SNAPSHOT")
 
     // Log's
     implementation("org.slf4j:slf4j-api:2.0.5")
