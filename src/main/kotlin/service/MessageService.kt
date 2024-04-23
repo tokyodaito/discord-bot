@@ -114,7 +114,7 @@ class MessageService {
             lastMessage,
             getStatus(stayInQueueStatus),
             getTrackDescription(track),
-            track.info.artworkUrl,
+            "https://static.wikia.nocookie.net/all-worlds-alliance/images/2/24/9abc7cf4bd20d565c5f7da6df73a9bdf.png/revision/latest?cb=20190106111029",
             getTrackAdditionalInfo(track, loop, loopPlaylist)
         ).doOnError {
             println("Error editing message: $it")
@@ -134,7 +134,7 @@ class MessageService {
                 event,
                 getStatus(stayInQueueStatus),
                 getTrackDescription(track),
-                track.info.artworkUrl,
+                "https://static.wikia.nocookie.net/all-worlds-alliance/images/2/24/9abc7cf4bd20d565c5f7da6df73a9bdf.png/revision/latest?cb=20190106111029",
                 getTrackAdditionalInfo(track, loop, loopPlaylist)
             ).flatMap { message ->
                 synchronized(musicManager.scheduler.lastMessageLock) {

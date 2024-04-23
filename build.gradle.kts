@@ -43,7 +43,7 @@ kapt {
 dependencies {
     testImplementation(kotlin("test"))
     implementation("com.discord4j:discord4j-core:3.2.5")
-    implementation("dev.arbjerg:lavaplayer:727959e9f621fc457b3a5adafcfffb55fdeaa538-SNAPSHOT")
+    implementation("dev.arbjerg:lavaplayer:0eaeee195f0315b2617587aa3537fa202df07ddc-SNAPSHOT")
 
     // Log's
     implementation("org.slf4j:slf4j-api:2.0.5")
