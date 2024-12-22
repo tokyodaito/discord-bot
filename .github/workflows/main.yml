@@ -23,7 +23,7 @@ jobs:
     - name: List build/libs directory
       run: ls -l build/libs
     - name: Upload build artifacts
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v4
       with:
         name: build-artifacts
         path: build/libs/
