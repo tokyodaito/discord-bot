@@ -1,10 +1,21 @@
 package manager
 
+import com.sedmelluq.discord.lavaplayer.container.MediaContainer
+import com.sedmelluq.discord.lavaplayer.container.MediaContainerRegistry
 import com.sedmelluq.discord.lavaplayer.player.AudioPlayerManager
 import com.sedmelluq.discord.lavaplayer.player.DefaultAudioPlayerManager
-import com.sedmelluq.discord.lavaplayer.source.AudioSourceManagers
+import com.sedmelluq.discord.lavaplayer.source.bandcamp.BandcampAudioSourceManager
+import com.sedmelluq.discord.lavaplayer.source.beam.BeamAudioSourceManager
+import com.sedmelluq.discord.lavaplayer.source.getyarn.GetyarnAudioSourceManager
+import com.sedmelluq.discord.lavaplayer.source.http.HttpAudioSourceManager
+import com.sedmelluq.discord.lavaplayer.source.nico.NicoAudioSourceManager
+import com.sedmelluq.discord.lavaplayer.source.soundcloud.SoundCloudAudioSourceManager
+import com.sedmelluq.discord.lavaplayer.source.twitch.TwitchStreamAudioSourceManager
+import com.sedmelluq.discord.lavaplayer.source.vimeo.VimeoAudioSourceManager
+import com.sedmelluq.discord.lavaplayer.source.yamusic.YandexMusicAudioSourceManager
 import com.sedmelluq.discord.lavaplayer.track.playback.AudioFrameBufferFactory
 import com.sedmelluq.discord.lavaplayer.track.playback.NonAllocatingAudioFrameBuffer
+import dev.lavalink.youtube.YoutubeAudioSourceManager
 import discord4j.common.util.Snowflake
 import discord4j.core.event.domain.message.MessageCreateEvent
 
@@ -13,7 +24,23 @@ object GuildManager {
         configuration.frameBufferFactory = AudioFrameBufferFactory { bufferDuration, format, stopping ->
             NonAllocatingAudioFrameBuffer(bufferDuration, format, stopping)
         }
-        AudioSourceManagers.registerRemoteSources(this)
+
+        provideSourceManagers()
+    }
+
+    private fun AudioPlayerManager.provideSourceManagers() {
+        val youtubeSource = YoutubeAudioSourceManager(/* allowSearch = */ true)
+
+        registerSourceManager(youtubeSource)
+        registerSourceManager(YandexMusicAudioSourceManager(true))
+        registerSourceManager(SoundCloudAudioSourceManager.createDefault())
+        registerSourceManager(BandcampAudioSourceManager())
+        registerSourceManager(VimeoAudioSourceManager())
+        registerSourceManager(TwitchStreamAudioSourceManager())
+        registerSourceManager(BeamAudioSourceManager())
+        registerSourceManager(GetyarnAudioSourceManager())
+        registerSourceManager(NicoAudioSourceManager())
+        registerSourceManager(HttpAudioSourceManager(MediaContainerRegistry(MediaContainer.asList())))
     }
 
     private val musicManagers: MutableMap<Snowflake, GuildMusicManager> = mutableMapOf()

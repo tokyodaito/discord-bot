@@ -8,14 +8,17 @@ import discord4j.voice.AudioProvider
 import music.LavaPlayerAudioProvider
 import music.TrackScheduler
 
+
 class GuildMusicManager(
-    val guildId: Snowflake,
+    private val guildId: Snowflake,
     playerManager: AudioPlayerManager
 ) {
+
     @Volatile
     var godMode = false
     val player: AudioPlayer = playerManager.createPlayer()
     val scheduler = TrackScheduler(player)
+
     val provider: AudioProvider = LavaPlayerAudioProvider(player)
 
     @Volatile
