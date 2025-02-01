@@ -12,6 +12,7 @@ import manager.GuildMusicManager
 import music.TrackScheduler
 import reactor.core.publisher.Mono
 import java.lang.Integer.min
+import java.time.Duration
 import java.util.concurrent.atomic.AtomicInteger
 
 class MusicService {
@@ -146,18 +147,27 @@ class MusicService {
                 .filter { it.messageId == message.id }
                 .filter { it.userId == event.message.author.get().id }
                 .filter { it.emoji.asUnicodeEmoji().isPresent }
+                .take(Duration.ofHours(1L))
                 .flatMap { reactionEvent ->
-                    val current = currentPage.get()
                     when (reactionEvent.emoji.asUnicodeEmoji().get()) {
-                        ReactionEmoji.unicode("⬅") -> if (current > 0) currentPage.decrementAndGet()
-                        ReactionEmoji.unicode("➡") -> if (current < totalPages - 1) currentPage.incrementAndGet()
+                        ReactionEmoji.unicode("⬅") -> {
+                            if (currentPage.get() > 0) {
+                                currentPage.decrementAndGet()
+                            }
+                        }
+                        ReactionEmoji.unicode("➡") -> {
+                            if (currentPage.get() < totalPages - 1) {
+                                currentPage.incrementAndGet()
+                            }
+                        }
                     }
                     messageService.editEmbedMessage(
                         message,
                         title = "$SONGS_LIST (Страница ${currentPage.get() + 1} из $totalPages)",
                         description = formatTrackListPage(currentPage.get())
                     )
-                }.then()
+                }
+                .then()
         }
 
         return sendInitialEmbed()
@@ -309,19 +319,21 @@ class MusicService {
         }
     }
 
-    private fun stopMusic(event: MessageCreateEvent, musicManager: GuildMusicManager): Mono<VoiceChannel?> {
-        val member = event.member.orElse(null)
-        val voiceState = member?.voiceState?.block()
-        val channel = voiceState?.channel?.block()
-
-        return if (channel != null) {
-            voiceChannelService.disconnect(event).subscribe()
-            musicManager.player.removeListener(musicManager.scheduler)
-            musicManager.scheduler.clearQueue()
-            Mono.just(channel)
-        } else {
-            Mono.empty()
-        }
+    private fun stopMusic(event: MessageCreateEvent, musicManager: GuildMusicManager): Mono<VoiceChannel> {
+        return Mono.justOrEmpty(event.member.orElse(null))
+            .flatMap { member ->
+                member.voiceState.flatMap { voiceState ->
+                    voiceState.channel
+                }
+            }
+            .flatMap { channel ->
+                voiceChannelService.disconnect(event)
+                    .doOnSuccess {
+                        musicManager.player.removeListener(musicManager.scheduler)
+                        musicManager.scheduler.clearQueue()
+                    }
+                    .thenReturn(channel)
+            }
     }
 
     private fun sendMessage(event: MessageCreateEvent, message: String): Mono<Void?> {
