@@ -1,74 +1,64 @@
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+import org.gradle.jvm.toolchain.JavaLanguageVersion
 
 plugins {
-    kotlin("jvm") version "1.7.10"
-    kotlin("kapt") version "1.7.10"
-    id("idea")
+    kotlin("jvm") version "1.8.0"
+    kotlin("kapt") version "1.8.0"
     application
+    idea
 }
-
 
 group = "org.example"
 version = "1.0-SNAPSHOT"
+
+java {
+    toolchain {
+        languageVersion.set(JavaLanguageVersion.of(17))
+    }
+}
 
 repositories {
     mavenCentral()
     maven("https://maven.lavalink.dev/snapshots")
     maven("https://maven.lavalink.dev/releases")
-
-    maven {
-        setUrl("https://jitpack.io")
-    }
+    maven("https://jitpack.io")
 }
 
-idea {
-    module {
-        sourceDirs.plusAssign(file("$projectDir/build/generated/source/kapt/main"))
-        generatedSourceDirs.plusAssign(file("$projectDir/build/generated/source/kapt/main"))
-    }
-}
+dependencies {
+    val slf4jVersion = "2.0.5"
+    val logbackVersion = "1.4.7"
+    val daggerVersion = "2.48"
 
-sourceSets {
-    main {
-        java {
-            srcDir("$buildDir/generated/source/kapt/main")
-        }
-    }
+    implementation(kotlin("stdlib"))
+    implementation("com.discord4j:discord4j-core:3.2.8")
+    implementation("dev.arbjerg:lavaplayer:+")
+    implementation("dev.lavalink.youtube:v2:+")
+
+    implementation("org.slf4j:slf4j-api:$slf4jVersion")
+    implementation("ch.qos.logback:logback-classic:$logbackVersion")
+
+    implementation("com.google.code.gson:gson:2.10.1")
+
+    implementation("com.google.dagger:dagger:$daggerVersion")
+    kapt("com.google.dagger:dagger-compiler:$daggerVersion")
+
+    implementation("org.xerial:sqlite-jdbc:3.40.1.0")
+
+    testImplementation(kotlin("test"))
 }
 
 kapt {
     includeCompileClasspath = false
 }
 
-
-dependencies {
-    testImplementation(kotlin("test"))
-    implementation("com.discord4j:discord4j-core:3.2.5")
-    implementation("dev.arbjerg:lavaplayer:2.2.2")
-    implementation("dev.lavalink.youtube:v2:1.11.2")
-
-    // Log's
-    implementation("org.slf4j:slf4j-api:2.0.5")
-    implementation("ch.qos.logback:logback-classic:1.4.7")
-
-    // Gson
-    implementation("com.google.code.gson:gson:2.10.1")
-
-    // Dagger2
-    implementation("com.google.dagger:dagger:2.48")
-    kapt("com.google.dagger:dagger-compiler:2.48")
-
-    // JDBC
-    implementation("org.xerial:sqlite-jdbc:3.40.1.0")
-}
-
-
-tasks.test {
-    useJUnitPlatform()
-}
-
 tasks.withType<KotlinCompile> {
-    kotlinOptions.jvmTarget = "1.8"
+    kotlinOptions {
+        jvmTarget = "17"
+        freeCompilerArgs = listOf(
+            "-Xjsr305=strict",
+            "-opt-in=kotlin.RequiresOptIn"
+        )
+    }
 }
 
 application {
@@ -77,16 +67,20 @@ application {
 
 tasks.withType<Jar> {
     manifest {
-        attributes(
-            "Main-Class" to "MainKt"
-        )
+        attributes("Main-Class" to "MainKt")
     }
-
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-
-    from(configurations.runtimeClasspath.get().filter { it.isDirectory || it.name.endsWith("jar") }
-        .flatMap { if (it.isDirectory) listOf(it) else listOf(zipTree(it)) })
+    from(sourceSets.main.get().output)
+    from(
+        configurations.runtimeClasspath.get()
+            .filter { it.isDirectory || it.name.endsWith(".jar") }
+            .map { if (it.isDirectory) it else zipTree(it) }
+    )
 }
 
-
-
+idea {
+    module {
+        sourceDirs.plusAssign(file("$buildDir/generated/source/kapt/main"))
+        generatedSourceDirs.plusAssign(file("$buildDir/generated/source/kapt/main"))
+    }
+}
