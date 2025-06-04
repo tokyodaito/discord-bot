@@ -4,6 +4,7 @@ import discord4j.core.GatewayDiscordClient
 import discord4j.core.event.domain.interaction.ChatInputInteractionEvent
 import discord4j.discordjson.json.ApplicationCommandRequest
 import discord4j.rest.interaction.GlobalCommandRegistrar
+import discord4j.rest.interaction.GuildCommandRegistrar
 import reactor.core.publisher.Mono
 
 class SlashCommandManager(private val client: GatewayDiscordClient) {
@@ -48,7 +49,13 @@ class SlashCommandManager(private val client: GatewayDiscordClient) {
 
     fun register() {
         val requests = commands.map { it.request }
-        GlobalCommandRegistrar.create(client.restClient, requests).registerCommands().blockLast()
+        val rest = client.restClient
+        val guildIds = client.guilds.map { it.id }.collectList().blockOptional().orElse(emptyList())
+        guildIds.forEach { id ->
+            GuildCommandRegistrar.create(rest, requests).registerCommands(id).blockLast()
+        }
+        GlobalCommandRegistrar.create(rest, requests).registerCommands().blockLast()
+
         client.on(ChatInputInteractionEvent::class.java)
             .flatMap { event ->
                 commands.find { it.request.name() == event.commandName }?.handle(event) ?: Mono.empty()
