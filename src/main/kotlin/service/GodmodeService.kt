@@ -1,11 +1,10 @@
 package service
 
-import bot.Bot
 import discord4j.core.event.domain.message.MessageCreateEvent
 import manager.GuildManager.getGuildMusicManager
+import service.MessageService
 
-class GodmodeService {
-    private val messageService = Bot.serviceComponent.getMessageService()
+class GodmodeService(private val messageService: MessageService) {
 
     fun setGodmodeStatus(event: MessageCreateEvent, status: Boolean) {
         val senderId = event.message.author.orElse(null)?.id?.asString()

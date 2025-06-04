@@ -18,6 +18,10 @@ import com.sedmelluq.discord.lavaplayer.track.playback.NonAllocatingAudioFrameBu
 import dev.lavalink.youtube.YoutubeAudioSourceManager
 import discord4j.common.util.Snowflake
 import discord4j.core.event.domain.message.MessageCreateEvent
+import org.koin.core.context.GlobalContext
+import service.MessageService
+import service.VoiceChannelService
+import model.database.DatabaseImpl
 
 object GuildManager {
     val playerManager: AudioPlayerManager = DefaultAudioPlayerManager().apply {
@@ -47,7 +51,14 @@ object GuildManager {
 
     fun getGuildMusicManager(guildId: Snowflake): GuildMusicManager {
         return musicManagers.computeIfAbsent(guildId) {
-            GuildMusicManager(guildId, playerManager)
+            val koin = GlobalContext.get()
+            GuildMusicManager(
+                guildId,
+                playerManager,
+                koin.get<DatabaseImpl>(),
+                koin.get<MessageService>(),
+                koin.get<VoiceChannelService>(),
+            )
         }
     }
 

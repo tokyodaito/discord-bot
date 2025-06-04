@@ -3,7 +3,6 @@ import org.gradle.jvm.toolchain.JavaLanguageVersion
 
 plugins {
     kotlin("jvm") version "1.8.0"
-    kotlin("kapt") version "1.8.0"
     application
     idea
 }
@@ -27,7 +26,7 @@ repositories {
 dependencies {
     val slf4jVersion = "2.0.5"
     val logbackVersion = "1.4.7"
-    val daggerVersion = "2.48"
+    val koinVersion = "3.4.0"
 
     implementation(kotlin("stdlib"))
     implementation("com.discord4j:discord4j-core:3.2.8")
@@ -39,17 +38,13 @@ dependencies {
 
     implementation("com.google.code.gson:gson:2.10.1")
 
-    implementation("com.google.dagger:dagger:$daggerVersion")
-    kapt("com.google.dagger:dagger-compiler:$daggerVersion")
+    implementation("io.insert-koin:koin-core:$koinVersion")
 
     implementation("org.xerial:sqlite-jdbc:3.40.1.0")
 
     testImplementation(kotlin("test"))
 }
 
-kapt {
-    includeCompileClasspath = false
-}
 
 tasks.withType<KotlinCompile> {
     kotlinOptions {
@@ -76,11 +71,4 @@ tasks.withType<Jar> {
             .filter { it.isDirectory || it.name.endsWith(".jar") }
             .map { if (it.isDirectory) it else zipTree(it) }
     )
-}
-
-idea {
-    module {
-        sourceDirs.plusAssign(file("$buildDir/generated/source/kapt/main"))
-        generatedSourceDirs.plusAssign(file("$buildDir/generated/source/kapt/main"))
-    }
 }

@@ -15,9 +15,13 @@ import java.time.Duration
 import java.util.concurrent.BlockingQueue
 import java.util.concurrent.LinkedBlockingQueue
 import kotlin.properties.Delegates
+import service.MessageService
+import service.VoiceChannelService
 
 class TrackScheduler(
     private val player: AudioPlayer,
+    private val messageService: MessageService,
+    private val voiceChannelService: VoiceChannelService,
 ) : AudioLoadResultHandler, AudioEventAdapter() {
     var loop: Boolean = false
     var playlistLoop: Boolean by Delegates.observable(false) { _, _, _ ->
@@ -35,7 +39,6 @@ class TrackScheduler(
     val lastMessageLock = Any()
 
     private var firstSong: Boolean = true
-    private val messageService = Bot.serviceComponent.getMessageService()
     private var queue: BlockingQueue<AudioTrack> = LinkedBlockingQueue()
     private var initialPlaylist: MutableList<AudioTrack> = mutableListOf()
 
@@ -174,7 +177,7 @@ class TrackScheduler(
                 currentEvent?.let { event ->
                     clearQueue()
                     player?.removeListener(this)
-                    Bot.serviceComponent.getVoiceChannelService().disconnect(event).subscribe()
+                    voiceChannelService.disconnect(event).subscribe()
                 }
             }
         }

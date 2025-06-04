@@ -1,13 +1,12 @@
 package bot.command.music.loop
 
-import bot.Bot
 import bot.Command
 import discord4j.core.event.domain.message.MessageCreateEvent
 import manager.GuildManager
 import reactor.core.publisher.Mono
+import service.MessageService
 
-class LoopCommand : Command {
-    private val messageService = Bot.serviceComponent.getMessageService()
+class LoopCommand(private val messageService: MessageService) : Command {
 
     override fun execute(event: MessageCreateEvent?): Mono<Void?>? {
         val guildId = event?.guildId?.orElse(null) ?: return Mono.empty()

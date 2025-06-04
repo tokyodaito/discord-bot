@@ -1,6 +1,5 @@
 package service.music
 
-import bot.Bot
 import discord4j.common.util.Snowflake
 import discord4j.core.event.domain.message.MessageCreateEvent
 import discord4j.core.event.domain.message.ReactionAddEvent
@@ -9,10 +8,15 @@ import discord4j.core.`object`.reaction.ReactionEmoji
 import manager.GuildManager.getGuildMusicManager
 import manager.GuildMusicManager
 import reactor.core.publisher.Mono
+import service.MessageService
+import model.database.DatabaseImpl
+import model.remote.YouTubeImpl
 
-internal class Favorites {
-    private val messageService = Bot.serviceComponent.getMessageService()
-    private val databaseImpl = Bot.databaseComponent.getDatabaseImpl()
+class Favorites(
+    private val messageService: MessageService,
+    private val databaseImpl: DatabaseImpl,
+    private val youTubeImpl: YouTubeImpl,
+) {
 
     fun saveFavorite(event: MessageCreateEvent): Mono<Void?> {
         val userId = extractUserId(event)
@@ -55,7 +59,7 @@ internal class Favorites {
 
         val index = extractIndex(event.message.content)
         if (index == null || index < 1) {
-            return sendErrorMessage(event, "Неправильный индекс").thenReturn(null)
+            return sendErrorMessage(event, "Неправильный индекс").then(Mono.justOrEmpty<String>(null))
         }
 
         return getFavoriteLink(memberId, index, event)
@@ -143,7 +147,7 @@ internal class Favorites {
         val endIndex = Integer.min(startIndex + favoritesPerPage, favorites.size)
         return favorites.subList(startIndex, endIndex).mapIndexed { index, favorite ->
             "${startIndex + index + 1}. ${
-                Bot.remoteComponent.getYouTubeImpl().fetchInfo(favorite) ?: "Unknown Title"
+                youTubeImpl.fetchInfo(favorite) ?: "Unknown Title"
             }"
         }.joinToString("\n")
     }
@@ -182,7 +186,7 @@ internal class Favorites {
             .flatMap { favorites ->
                 return@flatMap if (favorites.isNullOrEmpty() || index > favorites.size) {
                     val errorMessage = "Неправильный индекс или не найден трек"
-                    sendMessage(event, errorMessage).thenReturn(null)
+                    sendMessage(event, errorMessage).then(Mono.justOrEmpty<String>(null))
                 } else {
                     Mono.just(favorites[index - 1])
                 }
