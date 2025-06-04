@@ -182,7 +182,7 @@ internal class Favorites {
             .flatMap { favorites ->
                 return@flatMap if (favorites.isNullOrEmpty() || index > favorites.size) {
                     val errorMessage = "Неправильный индекс или не найден трек"
-                    sendMessage(event, errorMessage).thenReturn(null)
+                    sendMessage(event, errorMessage).then(Mono.empty())
                 } else {
                     Mono.just(favorites[index - 1])
                 }
