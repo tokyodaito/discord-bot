@@ -45,6 +45,7 @@ dependencies {
     implementation("org.xerial:sqlite-jdbc:3.40.1.0")
 
     testImplementation(kotlin("test"))
+    testImplementation("io.mockk:mockk:1.13.8")
 }
 
 kapt {
@@ -83,4 +84,8 @@ idea {
         sourceDirs.plusAssign(file("$buildDir/generated/source/kapt/main"))
         generatedSourceDirs.plusAssign(file("$buildDir/generated/source/kapt/main"))
     }
+}
+
+tasks.test {
+    useJUnitPlatform()
 }

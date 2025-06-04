@@ -28,3 +28,18 @@
 ```bash
 java -jar build/libs/discord-bot-1.0-SNAPSHOT.jar <DISCORD_TOKEN> <YOUTUBE_API_KEY>
 ```
+
+## Тестирование
+
+Для запуска unit-тестов выполните:
+
+```bash
+./gradlew test
+```
+
+В тестах токены Discord и YouTube можно мокировать, передавая фиктивные значения или
+используя переменные окружения. Сами сетевые запросы при необходимости легко
+заменяются на заглушки с помощью библиотеки MockK.
+
+Unit-тесты автоматически запускаются для каждого Pull Request благодаря
+GitHub Actions (см. `.github/workflows/pr.yml`).
