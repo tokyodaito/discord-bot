@@ -232,8 +232,8 @@ class MusicService {
         }
     }
 
-    fun removeOfFavorite(event: MessageCreateEvent): Mono<Void?> {
-        return favorites.removeOfFavorite(event).then()
+    fun removeFromFavorite(event: MessageCreateEvent): Mono<Void?> {
+        return favorites.removeFromFavorite(event).then()
     }
 
     fun addToFavoritesCurrentTrack(event: MessageCreateEvent): Mono<Void?> {

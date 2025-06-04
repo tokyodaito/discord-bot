@@ -61,7 +61,7 @@ internal class Favorites {
         return getFavoriteLink(memberId, index, event)
     }
 
-    fun removeOfFavorite(event: MessageCreateEvent): Mono<Void> {
+    fun removeFromFavorite(event: MessageCreateEvent): Mono<Void> {
         val memberId = event.message.author.map { it.id }.orElse(null) ?: return Mono.empty()
 
         val content = event.message.content

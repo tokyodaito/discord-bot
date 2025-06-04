@@ -85,7 +85,7 @@ class Bot(id: String, private val apiKeyYouTube: String) {
 
         commands["pfavorite"] = PlayFavoriteCommand()
 
-        commands["rmfavorite"] = RemoveOfFavoriteCommand()
+        commands["rmfavorite"] = RemoveFromFavoriteCommand()
 
         commands["nowfavorite"] = NowFavoriteCommand()
 
