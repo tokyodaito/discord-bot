@@ -23,6 +23,7 @@ internal class Observers(private val commands: MutableMap<String, Command>) {
     }
 
     private fun observeMessageEvents(client: GatewayDiscordClient) {
+        val analytics = Bot.serviceComponent.getAnalyticsService()
         client.eventDispatcher.on(MessageCreateEvent::class.java)
             .flatMap { event ->
                 val guildId = event.guildId.orElse(null)
@@ -31,7 +32,7 @@ internal class Observers(private val commands: MutableMap<String, Command>) {
                     musicManager.addGuild()
                     sendFirstMessage(event).subscribe()
                 }
-                processEvent(event)
+                analytics.log(event).then(processEvent(event) ?: Mono.empty())
             }
             .subscribeOn(Schedulers.parallel())
             .onErrorResume {
