@@ -15,6 +15,9 @@ class RelaySlashCommand(
             .ofType(MessageChannel::class.java)
             .flatMap { channel -> channel.createMessage(commandMessage) }
             .then()
-        return event.reply().withContent("Выполняю команду").withEphemeral(true).then(sendCommand)
+        return event.reply()
+            .withContent("Команда отправлена")
+            .withEphemeral(true)
+            .then(sendCommand)
     }
 }
