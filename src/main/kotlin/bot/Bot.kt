@@ -26,6 +26,8 @@ import di.service.DaggerServiceComponent
 import di.service.ServiceComponent
 import discord4j.core.DiscordClientBuilder
 import discord4j.core.GatewayDiscordClient
+import discord4j.gateway.intent.Intent
+import discord4j.gateway.intent.IntentSet
 
 
 class Bot(id: String, private val apiKeyYouTube: String) {
@@ -37,7 +39,13 @@ class Bot(id: String, private val apiKeyYouTube: String) {
         initDaggerComponents()
         initDatabase()
         initCommands()
-        val client: GatewayDiscordClient? = DiscordClientBuilder.create(id).build().login().block()
+        val intents = IntentSet.of(Intent.GUILD_MESSAGES, Intent.GUILD_VOICE_STATES, Intent.MESSAGE_CONTENT)
+        val client: GatewayDiscordClient? = DiscordClientBuilder.create(id)
+            .build()
+            .gateway()
+            .setEnabledIntents(intents)
+            .login()
+            .block()
 
         if (client != null) {
             Observers(commands).setEventObserver(client)
