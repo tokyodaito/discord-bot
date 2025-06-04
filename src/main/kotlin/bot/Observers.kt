@@ -61,6 +61,12 @@ internal class Observers(private val commands: MutableMap<String, Command>) {
         val oldChannelId = event.old.orElse(null)?.channelId?.orElse(null)
         val currentChannelId = event.current.channelId.orElse(null)
 
+        // Ignore initial join events triggered by the bot itself to avoid
+        // a premature disconnect when voice state cache isn't updated yet
+        if (event.current.userId == selfId && oldChannelId == null) {
+            return Mono.empty()
+        }
+
         if (oldChannelId == null && currentChannelId == null) {
             println("No channel state change")
             return Mono.empty<Void>()
