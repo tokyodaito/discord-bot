@@ -210,7 +210,6 @@ class MusicService {
         }
     }
 
-    // TODO
     fun saveFavorite(event: MessageCreateEvent): Mono<Void?> {
         return favorites.saveFavorite(event)
     }

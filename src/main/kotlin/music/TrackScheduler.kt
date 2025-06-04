@@ -21,11 +21,9 @@ class TrackScheduler(
 ) : AudioLoadResultHandler, AudioEventAdapter() {
     var loop: Boolean = false
     var playlistLoop: Boolean by Delegates.observable(false) { _, _, _ ->
-        if (queue != null) {
-            if (currentTrack != null)
-                initialPlaylist.add(currentTrack!!)
-            initialPlaylist.addAll(queue.toList())
-        }
+        if (currentTrack != null)
+            initialPlaylist.add(currentTrack!!)
+        initialPlaylist.addAll(queue.toList())
     }
 
     var currentTrack: AudioTrack? = null
