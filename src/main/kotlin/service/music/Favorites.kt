@@ -55,7 +55,7 @@ internal class Favorites {
 
         val index = extractIndex(event.message.content)
         if (index == null || index < 1) {
-            return sendErrorMessage(event, "Неправильный индекс").thenReturn(null.toString())
+            return sendErrorMessage(event, "Неправильный индекс").thenReturn(null)
         }
 
         return getFavoriteLink(memberId, index, event)
