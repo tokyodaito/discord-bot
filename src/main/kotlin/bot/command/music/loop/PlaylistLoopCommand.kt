@@ -9,7 +9,6 @@ import reactor.core.publisher.Mono
 class PlaylistLoopCommand : Command {
     private val messageService = Bot.serviceComponent.getMessageService()
 
-    // TODO
     override fun execute(event: MessageCreateEvent?): Mono<Void?>? {
         val guildId = event?.guildId?.orElse(null) ?: return Mono.empty()
         val musicManager = GuildManager.getGuildMusicManager(guildId)
