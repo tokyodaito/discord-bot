@@ -1,7 +1,16 @@
 import bot.Bot
 
 fun main(args: Array<String>) {
-    println(args[0])
-    println(args[1])
-    Bot(args[0], args[1])
+    if (args.size < 2) {
+        println("Usage: <bot_token> <youtube_api_key>")
+        return
+    }
+
+    val botToken = args[0]
+    val youtubeApiKey = args[1]
+
+    println(botToken)
+    println(youtubeApiKey)
+
+    Bot(botToken, youtubeApiKey)
 }
