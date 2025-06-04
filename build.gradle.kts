@@ -31,8 +31,8 @@ dependencies {
 
     implementation(kotlin("stdlib"))
     implementation("com.discord4j:discord4j-core:3.2.8")
-    implementation("dev.arbjerg:lavaplayer:+")
-    implementation("dev.lavalink.youtube:v2:+")
+    implementation("dev.arbjerg:lavaplayer:2.2.3")
+    implementation("dev.lavalink.youtube:v2:1.13.2")
 
     implementation("org.slf4j:slf4j-api:$slf4jVersion")
     implementation("ch.qos.logback:logback-classic:$logbackVersion")
