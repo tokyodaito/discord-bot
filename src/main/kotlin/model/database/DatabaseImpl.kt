@@ -1,10 +1,8 @@
 package model.database
 
-import bot.Bot
 import discord4j.common.util.Snowflake
 import reactor.core.publisher.Mono
-
-class DatabaseImpl {
+class DatabaseImpl(private val database: Database) {
     fun addFavorite(memberId: Snowflake, link: String) {
         Mono.fromCallable {
             if (isValidURL(link)) {
@@ -17,24 +15,24 @@ class DatabaseImpl {
 
     fun getFavorites(memberId: Snowflake): Mono<List<String>?> {
         return Mono.fromCallable {
-            Bot.databaseComponent.getDatabase().loadServerFavorites(memberId.toString())
+            database.loadServerFavorites(memberId.toString())
         }.handleError("getFavorites")
     }
 
     fun removeFavorite(memberId: Snowflake, link: String): Mono<Void> {
-        return Mono.fromCallable { Bot.databaseComponent.getDatabase().removeServerFavorite(memberId.toString(), link) }
+        return Mono.fromCallable { database.removeServerFavorite(memberId.toString(), link) }
             .handleError("removeFavorite").then()
     }
 
     fun addGuild(guildId: String) {
         Mono.fromCallable {
-            Bot.databaseComponent.getDatabase().addGuild(guildId)
+            database.addGuild(guildId)
         }.handleError("addGuild").subscribe()
     }
 
     fun existsGuild(guildId: String): Mono<Boolean> {
         return Mono.fromCallable {
-            Bot.databaseComponent.getDatabase().existsGuild(guildId)
+            database.existsGuild(guildId)
         }.handleError("getFirstMessage")
     }
 
@@ -44,7 +42,7 @@ class DatabaseImpl {
     }
 
     private fun saveLinkToDatabase(memberId: Snowflake, link: String) {
-        Bot.databaseComponent.getDatabase().saveServerFavorites(memberId.toString(), link)
+        database.saveServerFavorites(memberId.toString(), link)
     }
 
     private fun <T> Mono<T>.handleError(functionName: String): Mono<T> {

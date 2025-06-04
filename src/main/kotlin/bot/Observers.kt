@@ -13,10 +13,14 @@ import reactor.core.publisher.Mono
 import reactor.core.scheduler.Schedulers
 import reactor.util.retry.Retry
 import service.GodmodeService
+import service.MessageService
 import java.time.Duration
 import kotlin.random.Random
 
-internal class Observers(private val commands: MutableMap<String, Command>) {
+internal class Observers(
+    private val commands: MutableMap<String, Command>,
+    private val messageService: MessageService,
+) {
     internal fun setEventObserver(client: GatewayDiscordClient) {
         observeMessageEvents(client)
         observeVoiceEvents(client)
@@ -216,7 +220,6 @@ internal class Observers(private val commands: MutableMap<String, Command>) {
 
         val randomReason = reasons[Random.nextInt(reasons.size)]
 
-        val messageService = Bot.serviceComponent.getMessageService()
         return messageService.createEmbedMessage(
             event,
             "Подпишись на Boosty: https://www.youtube.com/watch?v=dQw4w9WgXcQ&pp=ygUXbmV2ZXIgZ29ubmEgZ2l2ZSB5b3UgdXA%3D",
@@ -225,7 +228,6 @@ internal class Observers(private val commands: MutableMap<String, Command>) {
     }
 
     private fun sendFirstMessage(event: MessageCreateEvent): Mono<Void?> {
-        val messageService = Bot.serviceComponent.getMessageService()
         return messageService.createEmbedMessage(
             event,
             "Приветствую!",

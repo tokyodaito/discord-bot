@@ -1,12 +1,11 @@
 package bot.command.help_message
 
-import bot.Bot
 import bot.Command
 import discord4j.core.event.domain.message.MessageCreateEvent
 import reactor.core.publisher.Mono
+import service.MessageService
 
-class HelpCommand : Command {
-    val messageService = Bot.serviceComponent.getMessageService()
+class HelpCommand(private val messageService: MessageService) : Command {
     override fun execute(event: MessageCreateEvent?): Mono<Void?>? {
         val generalCommands = """
         **Общие команды**

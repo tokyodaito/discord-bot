@@ -17,30 +17,32 @@ import bot.command.music.loop.PlaylistLoopCommand
 import bot.command.music.switch_tracks.JumpCommand
 import bot.command.music.switch_tracks.NextTrackCommand
 import bot.command.music.switch_tracks.ShuffleCommand
-import di.database.DaggerDatabaseComponent
-import di.database.DatabaseComponent
-import di.remote.DaggerRemoteComponent
-import di.remote.RemoteComponent
-import di.remote.RemoteModule
-import di.service.DaggerServiceComponent
-import di.service.ServiceComponent
 import discord4j.core.DiscordClientBuilder
 import discord4j.core.GatewayDiscordClient
+import model.database.Database
+import service.MessageService
+import service.music.MusicService
+import service.GodmodeService
 
 
-class Bot(id: String, private val apiKeyYouTube: String) {
+class Bot(
+    id: String,
+    private val database: Database,
+    private val musicService: MusicService,
+    private val messageService: MessageService,
+    private val godmodeService: GodmodeService,
+) {
     private lateinit var clientGeneral: GatewayDiscordClient
 
     private val commands: MutableMap<String, Command> = HashMap()
 
     init {
-        initDaggerComponents()
         initDatabase()
         initCommands()
         val client: GatewayDiscordClient? = DiscordClientBuilder.create(id).build().login().block()
 
         if (client != null) {
-            Observers(commands).setEventObserver(client)
+            Observers(commands, messageService).setEventObserver(client)
             clientGeneral = client
             println("Bot init!")
         }
@@ -49,69 +51,56 @@ class Bot(id: String, private val apiKeyYouTube: String) {
     }
 
     private fun initCommands() {
-        commands["ping"] = PingCommand()
+        commands["ping"] = PingCommand(messageService)
 
-        commands["play"] = PlayCommand()
+        commands["play"] = PlayCommand(musicService)
 
-        commands["серега"] = PlayLinkCommand(SEREGA_PIRAT)
+        commands["серега"] = PlayLinkCommand(SEREGA_PIRAT, musicService, messageService)
 
-        commands["папочка здесь"] = GodmodeEnableCommand()
+        commands["папочка здесь"] = GodmodeEnableCommand(godmodeService)
 
-        commands["godmodeoff"] = GodmodeDisableCommand()
+        commands["godmodeoff"] = GodmodeDisableCommand(godmodeService)
 
-        commands["help"] = HelpCommand()
+        commands["help"] = HelpCommand(messageService)
 
-        commands["stop"] = StopCommand()
+        commands["stop"] = StopCommand(musicService)
 
-        commands["next"] = NextTrackCommand()
+        commands["next"] = NextTrackCommand(messageService, musicService)
 
-        commands["queue"] = QueueCommand()
+        commands["queue"] = QueueCommand(musicService)
 
-        commands["what"] = WhatPlayingCommand()
+        commands["what"] = WhatPlayingCommand(messageService)
 
-        commands["loop"] = LoopCommand()
+        commands["loop"] = LoopCommand(messageService)
 
-        commands["shuffle"] = ShuffleCommand()
+        commands["shuffle"] = ShuffleCommand(messageService)
 
-        commands["playlistloop"] = PlaylistLoopCommand()
+        commands["playlistloop"] = PlaylistLoopCommand(messageService)
 
-        commands["jump"] = JumpCommand()
+        commands["jump"] = JumpCommand(musicService)
 
-        commands["delete"] = DeleteCommand()
+        commands["delete"] = DeleteCommand(musicService)
 
-        commands["savefavorite"] = SaveFavoritesCommand()
+        commands["savefavorite"] = SaveFavoritesCommand(musicService)
 
-        commands["getfavorites"] = GetFavoritesCommand()
+        commands["getfavorites"] = GetFavoritesCommand(musicService)
 
-        commands["pfavorite"] = PlayFavoriteCommand()
+        commands["pfavorite"] = PlayFavoriteCommand(musicService)
 
-        commands["rmfavorite"] = RemoveFromFavoriteCommand()
+        commands["rmfavorite"] = RemoveFromFavoriteCommand(musicService)
 
-        commands["nowfavorite"] = NowFavoriteCommand()
+        commands["nowfavorite"] = NowFavoriteCommand(musicService)
 
-        commands["sendmessage"] = SendMessageCommand()
+        commands["sendmessage"] = SendMessageCommand(godmodeService)
     }
 
-    private fun initDaggerComponents() {
-        serviceComponent = DaggerServiceComponent.builder().build()
-        remoteComponent = DaggerRemoteComponent.builder().remoteModule(RemoteModule(apiKeyYouTube)).build()
-        databaseComponent = DaggerDatabaseComponent.builder().build()
-    }
+    
 
     private fun initDatabase() {
-        databaseComponent.getDatabase().initDatabase()
+        database.initDatabase()
     }
 
     companion object {
-        lateinit var serviceComponent: ServiceComponent
-            private set
-
-        lateinit var remoteComponent: RemoteComponent
-            private set
-
-        lateinit var databaseComponent: DatabaseComponent
-            private set
-
         const val SEREGA_PIRAT = "https://www.youtube.com/watch?v=KhX3T_NYndo&list=PLaxxU3ZabospOFUVjRWofD-mYOQfCxpzw"
 
         const val prefix = "!"

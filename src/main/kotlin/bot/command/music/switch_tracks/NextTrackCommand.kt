@@ -1,16 +1,19 @@
 package bot.command.music.switch_tracks
 
-import bot.Bot
 import bot.Command
 import discord4j.core.event.domain.message.MessageCreateEvent
 import reactor.core.publisher.Mono
+import service.MessageService
+import service.music.MusicService
 
-class NextTrackCommand : Command {
-    private val messageService = Bot.serviceComponent.getMessageService()
+class NextTrackCommand(
+    private val messageService: MessageService,
+    private val musicService: MusicService,
+) : Command {
 
     override fun execute(event: MessageCreateEvent?): Mono<Void?>? {
         return event?.let {
-            Mono.fromCallable { Bot.serviceComponent.getMusicService().nextTrack(event) }.flatMap {
+            Mono.fromCallable { musicService.nextTrack(event) }.flatMap {
                 if (it) {
                     messageService.createEmbedMessage(event, "Включен следующий трек").then()
                 } else {

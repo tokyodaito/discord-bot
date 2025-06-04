@@ -1,6 +1,5 @@
 package service.music
 
-import bot.Bot
 import discord4j.core.event.domain.message.MessageCreateEvent
 import discord4j.core.event.domain.message.ReactionAddEvent
 import discord4j.core.`object`.entity.Message
@@ -14,12 +13,16 @@ import reactor.core.publisher.Mono
 import java.lang.Integer.min
 import java.time.Duration
 import java.util.concurrent.atomic.AtomicInteger
+import model.remote.YouTubeImpl
+import service.MessageService
+import service.VoiceChannelService
 
-class MusicService {
-    private val youTubeImpl = Bot.remoteComponent.getYouTubeImpl()
-    private val messageService = Bot.serviceComponent.getMessageService()
-    private val voiceChannelService = Bot.serviceComponent.getVoiceChannelService()
-    private val favorites = Favorites()
+class MusicService(
+    private val youTubeImpl: YouTubeImpl,
+    private val messageService: MessageService,
+    private val voiceChannelService: VoiceChannelService,
+    private val favorites: Favorites,
+) {
 
     fun play(event: MessageCreateEvent, link: String?): Mono<Void?> {
         val guildId = event.guildId.orElse(null) ?: return Mono.empty()

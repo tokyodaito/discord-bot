@@ -1,14 +1,15 @@
 package bot.command.music.change_state_player
 
-import bot.Bot
 import bot.Command
 import discord4j.core.event.domain.message.MessageCreateEvent
 import reactor.core.publisher.Mono
+import service.music.MusicService
 
-class DeleteCommand : Command {
+class DeleteCommand(private val musicService: MusicService) : Command {
+
     override fun execute(event: MessageCreateEvent?): Mono<Void?>? {
         return event?.let {
-            Bot.serviceComponent.getMusicService().deleteTrack(event)
+            musicService.deleteTrack(event)
         }
     }
 }
