@@ -13,19 +13,19 @@ import kotlin.test.assertTrue
 class AnalyticsServiceTest {
     @Test
     fun `log writes message`() {
-        val dir = createTempDir()
-        val path = dir.toPath().resolve("log.txt")
-        val service = AnalyticsService(path)
+        val dir = kotlin.io.path.createTempDirectory()
+        val service = AnalyticsService(dir)
         val event = mockk<MessageCreateEvent>()
         val message = mockk<Message>()
         val user = mockk<User>()
         every { event.message } returns message
         every { event.guildId } returns Optional.of(Snowflake.of("1"))
+        every { message.channelId } returns Snowflake.of("2")
         every { message.author } returns Optional.of(user)
         every { user.username } returns "user"
         every { message.content } returns "hi"
         service.log(event).block()
-        val text = path.readText()
+        val text = dir.resolve("1/2.log").readText()
         assertTrue(text.contains("hi"))
         assertTrue(text.contains("user"))
     }
