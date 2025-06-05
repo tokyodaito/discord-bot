@@ -24,6 +24,7 @@ import di.remote.RemoteComponent
 import di.remote.RemoteModule
 import di.service.DaggerServiceComponent
 import di.service.ServiceComponent
+import bot.slash.SlashCommandManager
 import discord4j.core.DiscordClientBuilder
 import discord4j.core.GatewayDiscordClient
 import discord4j.gateway.intent.Intent
@@ -49,6 +50,7 @@ class Bot(id: String, private val apiKeyYouTube: String) {
 
         if (client != null) {
             Observers(commands).setEventObserver(client)
+            SlashCommandManager(client).register()
             clientGeneral = client
             println("Bot init!")
         }
