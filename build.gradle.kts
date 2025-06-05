@@ -1,11 +1,13 @@
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 import org.gradle.jvm.toolchain.JavaLanguageVersion
+import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 
 plugins {
     kotlin("jvm") version "1.9.22"
     kotlin("kapt") version "1.9.22"
     application
     idea
+    id("com.github.johnrengelman.shadow") version "7.1.2"
 }
 
 group = "org.example"
@@ -66,17 +68,17 @@ application {
     mainClass.set("MainKt")
 }
 
-tasks.withType<Jar> {
+tasks.named<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("shadowJar") {
+    mergeServiceFiles()
+    archiveClassifier.set("")
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     manifest {
         attributes("Main-Class" to "MainKt")
     }
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-    from(sourceSets.main.get().output)
-    from(
-        configurations.runtimeClasspath.get()
-            .filter { it.isDirectory || it.name.endsWith(".jar") }
-            .map { if (it.isDirectory) it else zipTree(it) }
-    )
+}
+
+tasks.named("build") {
+    dependsOn("shadowJar")
 }
 
 idea {
