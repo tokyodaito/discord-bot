@@ -27,6 +27,7 @@ class MusicServiceAdditionalTest {
             override fun getMessageService() = messageService
             override fun getMusicService() = mockk<MusicService>(relaxed = true)
             override fun getVoiceChannelService() = mockk<VoiceChannelService>(relaxed = true)
+            override fun getAnalyticsService() = mockk<service.AnalyticsService>(relaxed = true)
         }
         val remoteComponent = di.remote.RemoteComponent { mockk(relaxed = true) }
         val databaseComponent = object : di.database.DatabaseComponent {

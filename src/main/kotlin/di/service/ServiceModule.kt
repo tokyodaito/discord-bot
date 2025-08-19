@@ -6,6 +6,7 @@ import service.GodmodeService
 import service.MessageService
 import service.music.MusicService
 import service.VoiceChannelService
+import service.AnalyticsService
 
 @Module
 class ServiceModule {
@@ -27,5 +28,10 @@ class ServiceModule {
     @Provides
     fun getVoiceChannelService(): VoiceChannelService {
         return VoiceChannelService()
+    }
+
+    @Provides
+    fun getAnalyticsService(): AnalyticsService {
+        return AnalyticsService()
     }
 }
