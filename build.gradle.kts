@@ -48,6 +48,7 @@ dependencies {
 
     testImplementation(kotlin("test"))
     testImplementation("io.mockk:mockk:1.13.8")
+    testImplementation("io.projectreactor:reactor-test:3.5.11")
 }
 
 kapt {
