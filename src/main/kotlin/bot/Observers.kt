@@ -84,16 +84,13 @@ internal class Observers(private val commands: MutableMap<String, Command>) {
         currentChannelId: Snowflake?
     ): Mono<Void> {
         if (oldChannelId != null && currentChannelId == null) {
-            return isBotInVoiceChannel(event, client)
-                .flatMap { botInVoice ->
-                    if (!botInVoice) {
-                        stopMusic(event.current.guildId)
-                    } else {
-                        Mono.empty<Void>()
-                    }
-                }
+            return if (event.current.userId == client.selfId) {
+                stopMusic(event.current.guildId)
+            } else {
+                Mono.empty()
+            }
         }
-        return Mono.empty<Void>()
+        return Mono.empty()
     }
 
     private fun handleVoiceJoining(
