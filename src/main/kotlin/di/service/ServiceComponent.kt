@@ -4,6 +4,7 @@ import dagger.Component
 import service.GodmodeService
 import service.MessageService
 import service.VoiceChannelService
+import service.AnalyticsService
 import service.music.MusicService
 
 @Component(modules = [ServiceModule::class])
@@ -12,4 +13,5 @@ interface ServiceComponent {
     fun getMessageService(): MessageService
     fun getMusicService(): MusicService
     fun getVoiceChannelService(): VoiceChannelService
+    fun getAnalyticsService(): AnalyticsService
 }

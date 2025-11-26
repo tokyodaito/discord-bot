@@ -29,6 +29,7 @@ class GodmodeServiceTest {
             override fun getMessageService() = messageService
             override fun getMusicService() = mockk<MusicService>(relaxed = true)
             override fun getVoiceChannelService() = mockk<VoiceChannelService>(relaxed = true)
+            override fun getAnalyticsService() = mockk<service.AnalyticsService>(relaxed = true)
         }
         val field = Bot::class.java.getDeclaredField("serviceComponent")
         field.isAccessible = true
