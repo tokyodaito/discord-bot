@@ -10,7 +10,10 @@ import com.sedmelluq.discord.lavaplayer.track.AudioTrack
 import com.sedmelluq.discord.lavaplayer.track.AudioTrackEndReason
 import discord4j.core.event.domain.message.MessageCreateEvent
 import discord4j.core.`object`.entity.Message
+import reactor.core.Disposable
 import reactor.core.publisher.Mono
+import reactor.core.scheduler.Scheduler
+import reactor.core.scheduler.Schedulers
 import java.time.Duration
 import java.util.concurrent.BlockingQueue
 import java.util.concurrent.LinkedBlockingQueue
@@ -18,12 +21,19 @@ import kotlin.properties.Delegates
 
 class TrackScheduler(
     private val player: AudioPlayer,
+    private val cleanupScheduler: Scheduler = Schedulers.parallel(),
 ) : AudioLoadResultHandler, AudioEventAdapter() {
     var loop: Boolean = false
-    var playlistLoop: Boolean by Delegates.observable(false) { _, _, _ ->
-        if (currentTrack != null)
-            initialPlaylist.add(currentTrack!!)
-        initialPlaylist.addAll(queue.toList())
+    var playlistLoop: Boolean by Delegates.observable(false) { _, oldValue, newValue ->
+        when {
+            newValue -> {
+                initialPlaylist.clear()
+                currentTrack?.let { initialPlaylist.add(it) }
+                initialPlaylist.addAll(queue.toList())
+            }
+
+            oldValue && !newValue -> initialPlaylist.clear()
+        }
     }
 
     var currentTrack: AudioTrack? = null
@@ -36,6 +46,7 @@ class TrackScheduler(
     private val messageService = Bot.serviceComponent.getMessageService()
     private var queue: BlockingQueue<AudioTrack> = LinkedBlockingQueue()
     private var initialPlaylist: MutableList<AudioTrack> = mutableListOf()
+    private var inactivityTask: Disposable? = null
 
     fun nextTrack() {
         println("nextTrack")
@@ -92,21 +103,27 @@ class TrackScheduler(
     }
 
     fun clearQueue() {
+        cancelInactivityCheck()
         currentTrack = null
         firstSong = true
         loop = false
         playlistLoop = false
         player.stopTrack()
         queue.clear()
+        initialPlaylist.clear()
+        currentEvent = null
+        lastMessage = null
     }
 
     private fun playTrackByIndex(index: Int, trackList: List<AudioTrack>) {
+        cancelInactivityCheck()
         val track = trackList[index - 1]
         currentTrack = track
         player.startTrack(track, false)
     }
 
     private fun playTrack(track: AudioTrack) {
+        cancelInactivityCheck()
         val trackToPlay = getTrackToPlay(track)
         player.startTrack(trackToPlay, false)
         sendTrackInfoMessage(track)
@@ -128,6 +145,7 @@ class TrackScheduler(
     }
 
     private fun handleTrack(track: AudioTrack, event: MessageCreateEvent) {
+        cancelInactivityCheck()
         if (player.startTrack(track, true)) {
             handleFirstTrack(track, event)
         } else if (!queue.contains(track)) {
@@ -166,21 +184,30 @@ class TrackScheduler(
 
     private fun handleClearPlayer(player: AudioPlayer?) {
         currentTrack = null
-        Mono.delay(Duration.ofMinutes(5)).subscribe {
-            if (queue.isEmpty() && currentTrack == null) {
-                resetPlayerState()
-                currentEvent?.let { event ->
-                    clearQueue()
-                    player?.removeListener(this)
-                    Bot.serviceComponent.getVoiceChannelService().disconnect(event).subscribe()
-                }
-            }
-        }
+        scheduleInactivityCheck(player)
     }
 
     private fun resetPlayerState() {
         loop = false
         firstSong = true
+    }
+
+    private fun scheduleInactivityCheck(player: AudioPlayer?) {
+        cancelInactivityCheck()
+        inactivityTask = Mono.delay(Duration.ofMinutes(5), cleanupScheduler).subscribe {
+            if (queue.isEmpty() && currentTrack == null) {
+                resetPlayerState()
+                val event = currentEvent
+                clearQueue()
+                player?.removeListener(this)
+                event?.let { Bot.serviceComponent.getVoiceChannelService().disconnect(it).subscribe() }
+            }
+        }
+    }
+
+    private fun cancelInactivityCheck() {
+        inactivityTask?.dispose()
+        inactivityTask = null
     }
 
     override fun trackLoaded(track: AudioTrack?) {
