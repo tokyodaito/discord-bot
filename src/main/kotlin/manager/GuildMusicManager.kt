@@ -21,25 +21,29 @@ class GuildMusicManager(
 
     val provider: AudioProvider = LavaPlayerAudioProvider(player)
 
+    private val listenerLock = Any()
     @Volatile
-    private var firstMessage = false
+    private var schedulerListenerAttached = false
 
-    @Volatile
-    private var firstMessageChecked = false
-
-    fun checkExistsGuild(): Boolean {
-        if (!firstMessageChecked) {
-            firstMessageChecked = true
-            Bot.databaseComponent.getDatabaseImpl().existsGuild(guildId.toString()).doOnNext {
-                firstMessage = it
-            }.subscribe()
+    fun attachSchedulerListener() {
+        synchronized(listenerLock) {
+            if (schedulerListenerAttached) return
+            player.addListener(scheduler)
+            schedulerListenerAttached = true
         }
-        return firstMessage
     }
 
-    fun addGuild() {
-        Bot.databaseComponent.getDatabaseImpl().addGuild(guildId.toString())
-        firstMessage = true
-        firstMessageChecked = true
+    fun detachSchedulerListener() {
+        synchronized(listenerLock) {
+            if (!schedulerListenerAttached) return
+            player.removeListener(scheduler)
+            schedulerListenerAttached = false
+        }
+    }
+
+    fun dispose() {
+        detachSchedulerListener()
+        scheduler.clearQueue()
+        player.destroy()
     }
 }

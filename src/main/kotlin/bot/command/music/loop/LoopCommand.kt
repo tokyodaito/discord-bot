@@ -14,22 +14,18 @@ class LoopCommand : Command {
         val musicManager = GuildManager.getGuildMusicManager(guildId)
         musicManager.scheduler.loop = !musicManager.scheduler.loop
 
-        return if (musicManager.scheduler.currentTrack != null) {
-            Mono.fromCallable {
-                if (musicManager.scheduler.loop) messageService.createEmbedMessage(event, "\uD83D\uDD0A Повтор включен")
-                    .subscribe()
-                else messageService.createEmbedMessage(event, "\uD83D\uDD07 Повтор выключен").subscribe()
-            }.then(
+        val track = musicManager.scheduler.currentTrack ?: return Mono.empty()
+        val statusMessage = if (musicManager.scheduler.loop) "\uD83D\uDD0A Повтор включен" else "\uD83D\uDD07 Повтор выключен"
+
+        return messageService.createEmbedMessage(event, statusMessage)
+            .then(
                 messageService.sendInformationAboutSong(
                     event,
-                    musicManager.scheduler.currentTrack!!,
+                    track,
                     musicManager.scheduler.loop,
                     loopPlaylist = false,
                     stayInQueueStatus = false
                 )
             )
-        } else {
-            Mono.empty()
-        }
     }
 }

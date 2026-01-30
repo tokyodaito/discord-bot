@@ -10,21 +10,28 @@ import com.sedmelluq.discord.lavaplayer.track.AudioTrack
 import com.sedmelluq.discord.lavaplayer.track.AudioTrackEndReason
 import discord4j.core.event.domain.message.MessageCreateEvent
 import discord4j.core.`object`.entity.Message
+import reactor.core.Disposable
 import reactor.core.publisher.Mono
 import java.time.Duration
 import java.util.concurrent.BlockingQueue
 import java.util.concurrent.LinkedBlockingQueue
-import kotlin.properties.Delegates
 
 class TrackScheduler(
     private val player: AudioPlayer,
 ) : AudioLoadResultHandler, AudioEventAdapter() {
     var loop: Boolean = false
-    var playlistLoop: Boolean by Delegates.observable(false) { _, _, _ ->
-        if (currentTrack != null)
-            initialPlaylist.add(currentTrack!!)
-        initialPlaylist.addAll(queue.toList())
-    }
+    var playlistLoop: Boolean = false
+        set(value) {
+            if (field == value) return
+            field = value
+            if (value) {
+                initialPlaylist.clear()
+                currentTrack?.let { initialPlaylist.add(it) }
+                initialPlaylist.addAll(queue.toList())
+            } else {
+                initialPlaylist.clear()
+            }
+        }
 
     var currentTrack: AudioTrack? = null
     var currentEvent: MessageCreateEvent? = null
@@ -36,6 +43,7 @@ class TrackScheduler(
     private val messageService = Bot.serviceComponent.getMessageService()
     private var queue: BlockingQueue<AudioTrack> = LinkedBlockingQueue()
     private var initialPlaylist: MutableList<AudioTrack> = mutableListOf()
+    private var idleDisconnectDisposable: Disposable? = null
 
     fun nextTrack() {
         println("nextTrack")
@@ -96,6 +104,8 @@ class TrackScheduler(
         firstSong = true
         loop = false
         playlistLoop = false
+        idleDisconnectDisposable?.dispose()
+        idleDisconnectDisposable = null
         player.stopTrack()
         queue.clear()
     }
@@ -107,6 +117,8 @@ class TrackScheduler(
     }
 
     private fun playTrack(track: AudioTrack) {
+        idleDisconnectDisposable?.dispose()
+        idleDisconnectDisposable = null
         val trackToPlay = getTrackToPlay(track)
         player.startTrack(trackToPlay, false)
         sendTrackInfoMessage(track)
@@ -120,9 +132,11 @@ class TrackScheduler(
         currentEvent?.let { event ->
             if (firstSong) {
                 firstSong = false
-                messageService.sendNewInformationAboutSong(event, track, loop, playlistLoop, false).subscribe()
+                messageService.sendNewInformationAboutSong(event, track, loop, playlistLoop, false)
+                    .subscribe({}, { e -> println("Error sendNewInformationAboutSong: $e") })
             } else {
-                messageService.sendInformationAboutSong(event, track, loop, playlistLoop, false).subscribe()
+                messageService.sendInformationAboutSong(event, track, loop, playlistLoop, false)
+                    .subscribe({}, { e -> println("Error sendInformationAboutSong: $e") })
             }
         }
     }
@@ -139,16 +153,21 @@ class TrackScheduler(
 
     private fun handleFirstTrack(track: AudioTrack, event: MessageCreateEvent) {
         currentTrack = track
+        idleDisconnectDisposable?.dispose()
+        idleDisconnectDisposable = null
         if (firstSong) {
-            messageService.sendNewInformationAboutSong(event, track, loop, playlistLoop, false).subscribe()
+            messageService.sendNewInformationAboutSong(event, track, loop, playlistLoop, false)
+                .subscribe({}, { e -> println("Error sendNewInformationAboutSong: $e") })
         }
     }
 
     private fun addTrackToQueue(track: AudioTrack, event: MessageCreateEvent) {
         if (queue.offer(track)) {
-            messageService.sendInformationAboutSong(event, track, loop, playlistLoop, true).subscribe()
+            messageService.sendInformationAboutSong(event, track, loop, playlistLoop, true)
+                .subscribe({}, { e -> println("Error sendInformationAboutSong: $e") })
         } else {
-            messageService.createEmbedMessage(event, "Не удалось добавить в очередь").subscribe()
+            messageService.createEmbedMessage(event, "Не удалось добавить в очередь")
+                .subscribe({}, { e -> println("Error createEmbedMessage: $e") })
         }
     }
 
@@ -166,13 +185,15 @@ class TrackScheduler(
 
     private fun handleClearPlayer(player: AudioPlayer?) {
         currentTrack = null
-        Mono.delay(Duration.ofMinutes(5)).subscribe {
+        idleDisconnectDisposable?.dispose()
+        idleDisconnectDisposable = Mono.delay(Duration.ofMinutes(5)).subscribe {
             if (queue.isEmpty() && currentTrack == null) {
                 resetPlayerState()
                 currentEvent?.let { event ->
                     clearQueue()
                     player?.removeListener(this)
-                    Bot.serviceComponent.getVoiceChannelService().disconnect(event).subscribe()
+                    Bot.serviceComponent.getVoiceChannelService().disconnect(event)
+                        .subscribe({}, { e -> println("Error disconnect: $e") })
                 }
             }
         }
@@ -199,15 +220,20 @@ class TrackScheduler(
         playlist?.tracks?.let {
             queue.addAll(it)
         }
-        if (currentTrack == null)
+        if (playlistLoop) {
+            initialPlaylist.clear()
+            initialPlaylist.addAll(queue.toList())
+        }
+        if (currentTrack == null) {
             nextTrack()
+        }
     }
 
     override fun noMatches() {
         println("No matches found for the given input")
         currentEvent?.let {
             messageService.createEmbedMessage(it, "Ошибка загрузки трека")
-                .subscribe()
+                .subscribe({}, { e -> println("Error createEmbedMessage: $e") })
         }
     }
 
@@ -215,7 +241,7 @@ class TrackScheduler(
         println("Failed to load track: ${exception.message}")
         currentEvent?.let {
             messageService.createEmbedMessage(it, "Ошибка загрузки трека")
-                .subscribe()
+                .subscribe({}, { e -> println("Error createEmbedMessage: $e") })
         }
     }
 
@@ -225,7 +251,7 @@ class TrackScheduler(
         when {
             shouldRestartTrack(endReason) -> nextTrack()
             shouldAddPlaylistBack(endReason) -> {
-                queue.addAll(initialPlaylist)
+                queue.addAll(initialPlaylist.map { it.makeClone() })
                 nextTrack()
             }
 

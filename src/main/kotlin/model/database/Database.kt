@@ -11,13 +11,17 @@ class Database {
             val statement: Statement = connection.createStatement()
             statement.execute("CREATE TABLE IF NOT EXISTS server_data (memberId TEXT PRIMARY KEY, favorites TEXT)")
             statement.execute("CREATE TABLE IF NOT EXISTS guild_data (guildId TEXT PRIMARY KEY)")
-            connection.close()
         }
     }
 
     fun saveServerFavorites(memberId: String, favorite: String) {
-        val updatedFavorites = calculateUpdatedFavorites(memberId, favorite)
         withConnection { connection ->
+            val existingFavorites = loadServerFavorites(connection, memberId).orEmpty()
+            val updatedFavorites = if (existingFavorites.isEmpty()) {
+                favorite
+            } else {
+                existingFavorites.joinToString(",") + ",$favorite"
+            }
             saveToFavoritesInDb(connection, memberId, updatedFavorites)
         }
     }
@@ -25,7 +29,7 @@ class Database {
     fun loadServerFavorites(memberId: String): List<String>? {
         return try {
             withConnection { connection ->
-                executeQuery(connection, memberId)
+                loadServerFavorites(connection, memberId)
             }
         } catch (e: SQLException) {
             e.printStackTrace()
@@ -54,10 +58,11 @@ class Database {
     }
 
     fun removeServerFavorite(memberId: String, favoriteToRemove: String) {
-        val existingFavorites = loadServerFavorites(memberId)?.toMutableList() ?: mutableListOf()
-        existingFavorites.remove(favoriteToRemove)
-        val updatedFavorites = existingFavorites.joinToString(",")
-        updateServerFavorites(memberId, updatedFavorites)
+        withConnection { connection ->
+            val existingFavorites = loadServerFavorites(connection, memberId).orEmpty().toMutableList()
+            existingFavorites.remove(favoriteToRemove)
+            updateServerFavorites(connection, memberId, existingFavorites.joinToString(","))
+        }
     }
 
     private fun <T> withConnection(action: (Connection) -> T): T {
@@ -75,32 +80,24 @@ class Database {
         }
     }
 
-    private fun calculateUpdatedFavorites(memberId: String, favorite: String): String {
-        val existingFavorites = loadServerFavorites(memberId)
-        return if (existingFavorites.isNullOrEmpty()) {
-            favorite
-        } else {
-            existingFavorites.joinToString(",") + ",$favorite"
-        }
-    }
-
-    private fun executeQuery(connection: Connection, memberId: String): List<String>? {
+    private fun loadServerFavorites(connection: Connection, memberId: String): List<String>? {
         val sql = "SELECT favorites FROM server_data WHERE memberId = ?"
         connection.prepareStatement(sql).use { preparedStatement ->
             preparedStatement.setString(1, memberId)
             val resultSet = preparedStatement.executeQuery()
-            return if (resultSet.next()) resultSet.getString("favorites").split(",") else null
+            if (!resultSet.next()) return null
+            val favorites = resultSet.getString("favorites").orEmpty()
+            if (favorites.isBlank()) return emptyList()
+            return favorites.split(",").filter { it.isNotBlank() }
         }
     }
 
-    private fun updateServerFavorites(memberId: String, updatedFavorites: String) {
-        withConnection { connection ->
-            val sql = "INSERT OR REPLACE INTO server_data (memberId, favorites) VALUES (?, ?)"
-            connection.prepareStatement(sql).use { preparedStatement ->
-                preparedStatement.setString(1, memberId)
-                preparedStatement.setString(2, updatedFavorites)
-                preparedStatement.executeUpdate()
-            }
+    private fun updateServerFavorites(connection: Connection, memberId: String, updatedFavorites: String) {
+        val sql = "INSERT OR REPLACE INTO server_data (memberId, favorites) VALUES (?, ?)"
+        connection.prepareStatement(sql).use { preparedStatement ->
+            preparedStatement.setString(1, memberId)
+            preparedStatement.setString(2, updatedFavorites)
+            preparedStatement.executeUpdate()
         }
     }
 

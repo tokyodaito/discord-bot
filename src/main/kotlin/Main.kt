@@ -9,8 +9,5 @@ fun main(args: Array<String>) {
     val botToken = args[0]
     val youtubeApiKey = args[1]
 
-    println(botToken)
-    println(youtubeApiKey)
-
     Bot(botToken, youtubeApiKey)
 }

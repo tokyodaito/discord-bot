@@ -81,6 +81,33 @@ tasks.named("build") {
     dependsOn("shadowJar")
 }
 
+tasks.named("startScripts") {
+    dependsOn("shadowJar")
+}
+
+tasks.named("distTar") {
+    dependsOn("shadowJar")
+}
+
+tasks.named("distZip") {
+    dependsOn("shadowJar")
+}
+
+tasks.named("startShadowScripts") {
+    dependsOn("jar")
+    dependsOn("shadowJar")
+}
+
+tasks.named("shadowDistTar") {
+    dependsOn("jar")
+    dependsOn("shadowJar")
+}
+
+tasks.named("shadowDistZip") {
+    dependsOn("jar")
+    dependsOn("shadowJar")
+}
+
 idea {
     module {
         sourceDirs.plusAssign(file("$buildDir/generated/source/kapt/main"))

@@ -2,11 +2,13 @@ package bot
 
 import discord4j.common.util.Snowflake
 import discord4j.core.GatewayDiscordClient
+import discord4j.core.event.domain.guild.GuildDeleteEvent
 import discord4j.core.event.domain.VoiceStateUpdateEvent
 import discord4j.core.event.domain.message.MessageCreateEvent
 import discord4j.core.`object`.VoiceState
 import discord4j.core.`object`.entity.channel.VoiceChannel
 import manager.GuildManager.getGuildMusicManager
+import manager.GuildManager.removeGuildMusicManager
 import manager.GuildMusicManager
 import reactor.core.publisher.Flux
 import reactor.core.publisher.Mono
@@ -14,24 +16,30 @@ import reactor.core.scheduler.Schedulers
 import reactor.util.retry.Retry
 import service.GodmodeService
 import java.time.Duration
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.random.Random
 
 internal class Observers(private val commands: MutableMap<String, Command>) {
+    private val database = Bot.databaseComponent.getDatabaseImpl()
+    private val guildInit = ConcurrentHashMap<Snowflake, Mono<Boolean>>()
+
     internal fun setEventObserver(client: GatewayDiscordClient) {
         observeMessageEvents(client)
         observeVoiceEvents(client)
+        observeGuildDeleteEvents(client)
     }
 
     private fun observeMessageEvents(client: GatewayDiscordClient) {
         client.eventDispatcher.on(MessageCreateEvent::class.java)
             .flatMap { event ->
                 val guildId = event.guildId.orElse(null)
-                val musicManager = getGuildMusicManager(guildId)
-                if (!musicManager.checkExistsGuild()) {
-                    musicManager.addGuild()
-                    sendFirstMessage(event).subscribe()
+                if (guildId == null) {
+                    return@flatMap processEvent(event)
                 }
-                processEvent(event)
+
+                ensureGuildRegistered(guildId)
+                    .flatMap { created -> if (created) sendFirstMessage(event).then() else Mono.empty() }
+                    .then(processEvent(event))
             }
             .subscribeOn(Schedulers.parallel())
             .onErrorResume {
@@ -53,6 +61,28 @@ internal class Observers(private val commands: MutableMap<String, Command>) {
                 Mono.empty()
             }
             .subscribe()
+    }
+
+    private fun observeGuildDeleteEvents(client: GatewayDiscordClient) {
+        client.eventDispatcher.on(GuildDeleteEvent::class.java)
+            .doOnNext {
+                guildInit.remove(it.guildId)
+                removeGuildMusicManager(it.guildId)
+            }
+            .onErrorResume {
+                println("Error observeGuildDeleteEvents: $it")
+                Mono.empty()
+            }
+            .subscribe()
+    }
+
+    private fun ensureGuildRegistered(guildId: Snowflake): Mono<Boolean> {
+        return guildInit.computeIfAbsent(guildId) { id ->
+            database.existsGuild(id.asString())
+                .flatMap { exists -> if (exists) Mono.just(false) else database.addGuild(id.asString()).thenReturn(true) }
+                .onErrorReturn(false)
+                .cache()
+        }
     }
 
     private fun handleVoiceStateUpdateEvent(event: VoiceStateUpdateEvent, client: GatewayDiscordClient): Mono<Void> {
@@ -112,11 +142,11 @@ internal class Observers(private val commands: MutableMap<String, Command>) {
         } ?: Mono.empty<Void>()
     }
 
-    private fun processEvent(event: MessageCreateEvent): Mono<Void?>? {
+    private fun processEvent(event: MessageCreateEvent): Mono<Void> {
         val guildId = event.guildId.orElse(null) ?: return Mono.empty()
         val musicManager = getGuildMusicManager(guildId)
 
-        return Mono.just(event.message.content)
+        return Mono.just(event.message.content.orEmpty())
             .flatMap { content ->
                 if (isGodModeEnabled(musicManager, event)) {
                     Mono.empty()
@@ -128,6 +158,7 @@ internal class Observers(private val commands: MutableMap<String, Command>) {
                 println("Error processEvent: $it")
                 Mono.empty()
             }
+            .then()
     }
 
     private fun isGodModeEnabled(musicManager: GuildMusicManager, event: MessageCreateEvent): Boolean {
@@ -135,21 +166,22 @@ internal class Observers(private val commands: MutableMap<String, Command>) {
         return musicManager.godMode && authorId != GodmodeService.godModeUserId
     }
 
-    private fun executeMatchingCommand(content: String, event: MessageCreateEvent): Mono<Void?> {
+    private fun executeMatchingCommand(content: String, event: MessageCreateEvent): Mono<Void> {
         return Flux.fromIterable(commands.entries)
             .filter { entry -> content.startsWith(Bot.prefix + entry.key, ignoreCase = true) }
             .flatMap { entry ->
-                entry.value.execute(event)?.then(
+                (entry.value.execute(event) ?: Mono.empty()).then(
                     Mono.defer {
-                        if (Random.nextInt(100) < -1) {
+                        if (Random.nextInt(100) < 1) {
                             sendBoostyMessage(event)
                         } else {
-                            Mono.empty<Void>()
+                            Mono.empty()
                         }
                     }
                 )
             }
             .next()
+            .then()
     }
 
 
@@ -158,17 +190,16 @@ internal class Observers(private val commands: MutableMap<String, Command>) {
     ): Mono<Void> {
         return if (voiceStates.size == 1 && voiceStates[0].userId == selfId) {
             println("Only bot is present in the voice channel. Disconnecting and clearing the queue.")
-            channel.sendDisconnectVoiceState().then(Mono.fromRunnable<Void?> {
-                getGuildMusicManager(guildId).player.removeListener(
-                    getGuildMusicManager(
-                        guildId
-                    ).scheduler
-                )
-                getGuildMusicManager(guildId).scheduler.clearQueue()
-            })
+            val musicManager = getGuildMusicManager(guildId)
+            channel.sendDisconnectVoiceState()
+                .then(Mono.fromRunnable<Void> {
+                    musicManager.detachSchedulerListener()
+                    musicManager.scheduler.clearQueue()
+                })
+                .then()
         } else {
             println("More than one member is present in the voice channel.")
-            Mono.empty()
+            Mono.empty<Void>()
         }.retryWhen(Retry.backoff(3, Duration.ofSeconds(5)))
             .onErrorResume {
                 println("Error handleVoiceState: $it")
@@ -176,27 +207,10 @@ internal class Observers(private val commands: MutableMap<String, Command>) {
             }
     }
 
-    private fun isBotInVoiceChannel(
-        event: VoiceStateUpdateEvent,
-        client: GatewayDiscordClient
-    ): Mono<Boolean> {
-        return event.client.self
-            .flatMap { self ->
-                client.getGuildById(event.current.guildId)
-                    .flatMap { guild ->
-                        guild.getMemberById(self.id)
-                    }
-            }
-            .flatMap { member ->
-                member.voiceState.map { voiceState -> voiceState.channelId.isPresent }
-            }
-            .defaultIfEmpty(false)
-    }
-
     private fun stopMusic(guildId: Snowflake): Mono<Void> {
         return Mono.fromCallable {
             val musicManager = getGuildMusicManager(guildId)
-            musicManager.player.removeListener(musicManager.scheduler)
+            musicManager.detachSchedulerListener()
             musicManager.scheduler.clearQueue()
         }.then()
     }

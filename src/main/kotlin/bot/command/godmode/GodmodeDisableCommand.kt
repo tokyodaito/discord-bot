@@ -9,6 +9,6 @@ class GodmodeDisableCommand : Command {
     private val godmodeService = GodmodeService()
 
     override fun execute(event: MessageCreateEvent?): Mono<Void?>? {
-        return event?.let { Mono.fromCallable { godmodeService.setGodmodeStatus(it, false) }.then() }
+        return event?.let { godmodeService.setGodmodeStatus(it, false).then() } ?: Mono.empty()
     }
 }

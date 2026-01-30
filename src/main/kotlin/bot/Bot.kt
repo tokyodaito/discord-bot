@@ -31,8 +31,6 @@ import discord4j.gateway.intent.IntentSet
 
 
 class Bot(id: String, private val apiKeyYouTube: String) {
-    private lateinit var clientGeneral: GatewayDiscordClient
-
     private val commands: MutableMap<String, Command> = HashMap()
 
     init {
@@ -49,7 +47,6 @@ class Bot(id: String, private val apiKeyYouTube: String) {
 
         if (client != null) {
             Observers(commands).setEventObserver(client)
-            clientGeneral = client
             println("Bot init!")
         }
 

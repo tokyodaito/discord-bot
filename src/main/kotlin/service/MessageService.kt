@@ -72,16 +72,16 @@ class MessageService {
         event: MessageCreateEvent, track: AudioTrack, loop: Boolean,
         loopPlaylist: Boolean, stayInQueueStatus: Boolean
     ): Mono<Void> {
-        val musicManager = GuildManager.getGuildMusicManager(event)
+        val musicManager = GuildManager.getGuildMusicManager(event) ?: return Mono.empty()
 
         return Mono.defer {
-            synchronized(musicManager.scheduler.lastMessageLock) {
-                val lastMessage = musicManager.scheduler.lastMessage
-                if (lastMessage != null && !stayInQueueStatus) {
-                    lastMessage.delete().subscribe()
-                }
-                createMessage(event, track, loop, loopPlaylist, stayInQueueStatus, musicManager)
+            val lastMessage = synchronized(musicManager.scheduler.lastMessageLock) { musicManager.scheduler.lastMessage }
+            val deleteLastMessage = if (lastMessage != null && !stayInQueueStatus) {
+                lastMessage.delete().onErrorResume { Mono.empty() }.then()
+            } else {
+                Mono.empty()
             }
+            deleteLastMessage.then(createMessage(event, track, loop, loopPlaylist, stayInQueueStatus, musicManager))
         }
     }
 
@@ -89,7 +89,7 @@ class MessageService {
         event: MessageCreateEvent, track: AudioTrack, loop: Boolean,
         loopPlaylist: Boolean, stayInQueueStatus: Boolean
     ): Mono<Void> {
-        val musicManager = GuildManager.getGuildMusicManager(event)
+        val musicManager = GuildManager.getGuildMusicManager(event) ?: return Mono.empty()
 
         return Mono.defer {
             synchronized(musicManager.scheduler.lastMessageLock) {
@@ -129,25 +129,25 @@ class MessageService {
         stayInQueueStatus: Boolean,
         musicManager: GuildMusicManager
     ): Mono<Void> {
-        return event.message.channel.flatMap {
-            createEmbedMessage(
-                event,
-                getStatus(stayInQueueStatus),
-                getTrackDescription(track),
-                "https://static.wikia.nocookie.net/all-worlds-alliance/images/2/24/9abc7cf4bd20d565c5f7da6df73a9bdf.png/revision/latest?cb=20190106111029",
-                getTrackAdditionalInfo(track, loop, loopPlaylist)
-            ).flatMap { message ->
+        return createEmbedMessage(
+            event,
+            getStatus(stayInQueueStatus),
+            getTrackDescription(track),
+            "https://static.wikia.nocookie.net/all-worlds-alliance/images/2/24/9abc7cf4bd20d565c5f7da6df73a9bdf.png/revision/latest?cb=20190106111029",
+            getTrackAdditionalInfo(track, loop, loopPlaylist)
+        )
+            .doOnNext { message ->
                 synchronized(musicManager.scheduler.lastMessageLock) {
                     if (!stayInQueueStatus) {
                         musicManager.scheduler.lastMessage = message
                     }
                 }
-                Mono.empty<Void>()
-            }.onErrorResume {
+            }
+            .onErrorResume {
                 println("Error creating message: $it")
                 Mono.empty()
             }
-        }
+            .then()
     }
 
     private fun getTrackDescription(track: AudioTrack): String {

@@ -9,6 +9,6 @@ class SendMessageCommand : Command {
     private val godmodeService = GodmodeService()
 
     override fun execute(event: MessageCreateEvent?): Mono<Void?>? {
-        return event?.let { Mono.fromCallable { godmodeService.sendMessageFromUser(it) }.then() }
+        return event?.let { godmodeService.sendMessageFromUser(it).then() } ?: Mono.empty()
     }
 }

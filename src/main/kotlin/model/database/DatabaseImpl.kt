@@ -3,44 +3,57 @@ package model.database
 import bot.Bot
 import discord4j.common.util.Snowflake
 import reactor.core.publisher.Mono
+import reactor.core.scheduler.Schedulers
+import java.net.URI
 
 class DatabaseImpl {
-    fun addFavorite(memberId: Snowflake, link: String) {
-        Mono.fromCallable {
-            if (isValidURL(link)) {
-                saveLinkToDatabase(memberId, link)
-            } else {
-                println("Provided link is invalid.")
+    fun addFavorite(memberId: Snowflake, link: String): Mono<Void> {
+        return Mono.fromCallable {
+            if (!isValidUrl(link)) {
+                throw IllegalArgumentException("Invalid url")
             }
-        }.handleError("addFavorite").subscribe()
+            saveLinkToDatabase(memberId, link)
+        }
+            .subscribeOn(Schedulers.boundedElastic())
+            .handleError("addFavorite")
+            .then()
     }
 
     fun getFavorites(memberId: Snowflake): Mono<List<String>?> {
         return Mono.fromCallable {
             Bot.databaseComponent.getDatabase().loadServerFavorites(memberId.toString())
-        }.handleError("getFavorites")
+        }
+            .subscribeOn(Schedulers.boundedElastic())
+            .handleError("getFavorites")
     }
 
     fun removeFavorite(memberId: Snowflake, link: String): Mono<Void> {
         return Mono.fromCallable { Bot.databaseComponent.getDatabase().removeServerFavorite(memberId.toString(), link) }
-            .handleError("removeFavorite").then()
+            .subscribeOn(Schedulers.boundedElastic())
+            .handleError("removeFavorite")
+            .then()
     }
 
-    fun addGuild(guildId: String) {
-        Mono.fromCallable {
-            Bot.databaseComponent.getDatabase().addGuild(guildId)
-        }.handleError("addGuild").subscribe()
+    fun addGuild(guildId: String): Mono<Void> {
+        return Mono.fromCallable { Bot.databaseComponent.getDatabase().addGuild(guildId) }
+            .subscribeOn(Schedulers.boundedElastic())
+            .handleError("addGuild")
+            .then()
     }
 
     fun existsGuild(guildId: String): Mono<Boolean> {
         return Mono.fromCallable {
             Bot.databaseComponent.getDatabase().existsGuild(guildId)
-        }.handleError("getFirstMessage")
+        }
+            .subscribeOn(Schedulers.boundedElastic())
+            .handleError("existsGuild")
+            .defaultIfEmpty(false)
     }
 
-    private fun isValidURL(link: String): Boolean {
-        val regex = "^(https?|ftp)://[^\\s/$.?#].\\S*$"
-        return link.matches(Regex(regex))
+    private fun isValidUrl(link: String): Boolean {
+        val uri = runCatching { URI(link) }.getOrNull() ?: return false
+        val scheme = uri.scheme?.lowercase()
+        return (scheme == "http" || scheme == "https") && !uri.host.isNullOrBlank()
     }
 
     private fun saveLinkToDatabase(memberId: Snowflake, link: String) {

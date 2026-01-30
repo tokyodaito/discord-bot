@@ -11,6 +11,7 @@ import manager.GuildManager.playerManager
 import manager.GuildMusicManager
 import music.TrackScheduler
 import reactor.core.publisher.Mono
+import reactor.core.scheduler.Schedulers
 import java.lang.Integer.min
 import java.time.Duration
 import java.util.concurrent.atomic.AtomicInteger
@@ -43,7 +44,7 @@ class MusicService {
     }
 
     fun jump(event: MessageCreateEvent): Mono<Void?> {
-        val musicManager = getGuildMusicManager(event)
+        val musicManager = getGuildMusicManager(event) ?: return Mono.empty()
         val args = event.message.content.split(" ")
 
         return when {
@@ -110,7 +111,8 @@ class MusicService {
     }
 
     fun showTrackList(event: MessageCreateEvent): Mono<Void> {
-        val musicManager = getGuildMusicManager(event)
+        val musicManager = getGuildMusicManager(event) ?: return Mono.empty()
+        val authorId = event.message.author.map { it.id }.orElse(null) ?: return Mono.empty()
         val tracks = musicManager.scheduler.getFullTrackList()
         val tracksPerPage = 10
         val totalPages = (tracks.size + tracksPerPage - 1) / tracksPerPage
@@ -145,9 +147,9 @@ class MusicService {
         fun processReactionEvents(message: Message): Mono<Void> {
             return message.client.eventDispatcher.on(ReactionAddEvent::class.java)
                 .filter { it.messageId == message.id }
-                .filter { it.userId == event.message.author.get().id }
+                .filter { it.userId == authorId }
                 .filter { it.emoji.asUnicodeEmoji().isPresent }
-                .take(Duration.ofHours(1L))
+                .take(Duration.ofMinutes(10))
                 .flatMap { reactionEvent ->
                     when (reactionEvent.emoji.asUnicodeEmoji().get()) {
                         ReactionEmoji.unicode("⬅") -> {
@@ -181,7 +183,7 @@ class MusicService {
 
 
     fun nextTrack(event: MessageCreateEvent): Boolean {
-        val musicManager = getGuildMusicManager(event)
+        val musicManager = getGuildMusicManager(event) ?: return false
 
         return if (musicManager.scheduler.getFullTrackList().size <= 1) {
             false
@@ -193,7 +195,7 @@ class MusicService {
     }
 
     fun deleteTrack(event: MessageCreateEvent): Mono<Void?> {
-        val musicManager = getGuildMusicManager(event)
+        val musicManager = getGuildMusicManager(event) ?: return Mono.empty()
 
         return run {
             val args = event.message.content.split(" ")
@@ -247,8 +249,10 @@ class MusicService {
                 return@flatMap sendMessage(event, NOT_IN_VOICE_CHANNEL)
             }
             if (link != null) {
+                musicManager.attachSchedulerListener()
                 loadMusic(link, musicManager.scheduler)
             } else {
+                musicManager.attachSchedulerListener()
                 processYoutubeLink(event, musicManager.scheduler)
             }
         }
@@ -263,10 +267,10 @@ class MusicService {
             }
             voiceChannelService.join(event).then(
                 if (link != null) {
-                    musicManager.player.addListener(musicManager.scheduler)
+                    musicManager.attachSchedulerListener()
                     loadMusic(link, musicManager.scheduler)
                 } else {
-                    musicManager.player.addListener(musicManager.scheduler)
+                    musicManager.attachSchedulerListener()
                     processYoutubeLink(event, musicManager.scheduler)
                 }
             )
@@ -282,28 +286,51 @@ class MusicService {
 
         val input = command.subList(1, command.size).joinToString(" ")
         return if (isValidYoutubeLink(input)) {
-            loadItem(input, scheduler)
+            loadItem(normalizeUrl(input), scheduler)
         } else {
             searchAndLoadItem(input, scheduler)
         }
     }
 
     private fun isValidYoutubeLink(input: String): Boolean {
-        val simpleUrlRegex = "^(https?://)?(www\\.)?\\S+$"
-        return input.matches(Regex(simpleUrlRegex))
+        return looksLikeUrl(input)
+    }
+
+    private fun looksLikeUrl(input: String): Boolean {
+        val trimmed = input.trim()
+        if (trimmed.isBlank()) return false
+        if (trimmed.any { it.isWhitespace() }) return false
+
+        if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) return true
+        if (trimmed.startsWith("www.")) return true
+
+        val hasDomain = trimmed.contains('.')
+        val hasPathOrQuery = trimmed.contains('/') || trimmed.contains('?') || trimmed.contains('=')
+        return hasDomain && hasPathOrQuery
+    }
+
+    private fun normalizeUrl(input: String): String {
+        val trimmed = input.trim()
+        return if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+            trimmed
+        } else {
+            "https://$trimmed"
+        }
     }
 
     private fun loadItem(input: String, scheduler: TrackScheduler): Mono<Void?> {
-        playerManager.loadItem(input, scheduler)
-        return Mono.empty()
+        return Mono.fromCallable {
+            runCatching { playerManager.loadItem(input, scheduler) }
+                .onFailure { e -> println("Error loadItem: $e") }
+            true
+        }.subscribeOn(Schedulers.boundedElastic()).then()
     }
 
     private fun searchAndLoadItem(input: String, scheduler: TrackScheduler): Mono<Void?> {
-        val youtubeSearchResult = youTubeImpl.searchYoutube(input)
-        if (youtubeSearchResult != null) {
-            loadItem(youtubeSearchResult, scheduler)
-        }
-        return Mono.empty()
+        return Mono.fromCallable { youTubeImpl.searchYoutube(input) }
+            .subscribeOn(Schedulers.boundedElastic())
+            .flatMap { url -> if (url != null) loadItem(url, scheduler) else Mono.empty() }
+            .then()
     }
 
 
@@ -315,7 +342,7 @@ class MusicService {
                 println("An error occurred: ${e.message}")
                 e.printStackTrace()
             }
-        }
+        }.subscribeOn(Schedulers.boundedElastic()).then()
     }
 
     private fun stopMusic(event: MessageCreateEvent, musicManager: GuildMusicManager): Mono<VoiceChannel> {
@@ -328,7 +355,7 @@ class MusicService {
             .flatMap { channel ->
                 voiceChannelService.disconnect(event)
                     .doOnSuccess {
-                        musicManager.player.removeListener(musicManager.scheduler)
+                        musicManager.detachSchedulerListener()
                         musicManager.scheduler.clearQueue()
                     }
                     .thenReturn(channel)

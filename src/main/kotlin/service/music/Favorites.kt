@@ -8,24 +8,25 @@ import discord4j.core.`object`.entity.Message
 import discord4j.core.`object`.reaction.ReactionEmoji
 import manager.GuildManager.getGuildMusicManager
 import manager.GuildMusicManager
+import reactor.core.publisher.Flux
 import reactor.core.publisher.Mono
+import reactor.core.scheduler.Schedulers
+import java.time.Duration
 
 internal class Favorites {
     private val messageService = Bot.serviceComponent.getMessageService()
     private val databaseImpl = Bot.databaseComponent.getDatabaseImpl()
+    private val youTubeImpl = Bot.remoteComponent.getYouTubeImpl()
 
     fun saveFavorite(event: MessageCreateEvent): Mono<Void?> {
-        val userId = extractUserId(event)
+        val userId = extractUserId(event) ?: return sendErrorMessage(event, "Неправильная ссылка").then()
 
         return extractContentFromEvent(event)
             .flatMap { content ->
-                if (isYoutubeLink(content) && userId != null) {
-                    addToFavorites(userId, content)
-                    sendMessage(event, "Трек добавлен в избранное")
-                } else {
-                    sendErrorMessage(event, "Неправильная ссылка")
-                }
+                val normalized = normalizeYoutubeLink(content) ?: return@flatMap sendErrorMessage(event, "Неправильная ссылка")
+                databaseImpl.addFavorite(userId, normalized).then(sendMessage(event, "Трек добавлен в избранное"))
             }
+            .switchIfEmpty(sendErrorMessage(event, "Неправильная ссылка"))
             .onErrorResume {
                 println("Error saveFavorites: $it")
                 Mono.empty()
@@ -34,15 +35,13 @@ internal class Favorites {
     }
 
     fun getFavoritesToDisplay(event: MessageCreateEvent): Mono<Void?> {
-        val memberId = event.message.author.map { it.id }.orElse(null) ?: return Mono.empty()
+        val memberId = extractUserId(event) ?: return Mono.empty()
 
         return getFavorites(memberId)
             .flatMap { favorites ->
-                if (favorites?.isEmpty() != false) {
-                    sendMessage(event, "У вас нет сохраненных песен").then()
-                } else {
-                    displayFavorites(event, favorites)
-                }
+                val list = favorites.orEmpty()
+                if (list.isEmpty()) sendMessage(event, "У вас нет сохраненных песен").then()
+                else displayFavorites(event, list)
             }
             .onErrorResume {
                 logError("Error in getFavoritesToDisplay: $it")
@@ -51,7 +50,7 @@ internal class Favorites {
     }
 
     fun getLinkOfFavorite(event: MessageCreateEvent): Mono<String?> {
-        val memberId = event.message.author.map { it.id }.orElse(null) ?: return Mono.empty()
+        val memberId = extractUserId(event) ?: return Mono.empty()
 
         val index = extractIndex(event.message.content)
         if (index == null || index < 1) {
@@ -62,7 +61,7 @@ internal class Favorites {
     }
 
     fun removeFromFavorite(event: MessageCreateEvent): Mono<Void> {
-        val memberId = event.message.author.map { it.id }.orElse(null) ?: return Mono.empty()
+        val memberId = extractUserId(event) ?: return Mono.empty()
 
         val content = event.message.content
         val index = content.split(" ").getOrNull(1)?.toIntOrNull()
@@ -80,7 +79,7 @@ internal class Favorites {
 
     fun addTheCurrentTrackToFavorites(event: MessageCreateEvent): Mono<Void> {
         val userId = extractUserId(event)
-        val musicManager = getGuildMusicManager(event)
+        val musicManager = getGuildMusicManager(event) ?: return Mono.empty()
 
         return Mono.justOrEmpty(event.message.content)
             .flatMap { handleAddingToFavorites(userId, musicManager, event) }
@@ -107,8 +106,10 @@ internal class Favorites {
         return input.matches(Regex("$youtubeVideoRegex|$youtubePlaylistRegex"))
     }
 
-    private fun addToFavorites(userId: Snowflake, input: String) {
-        databaseImpl.addFavorite(userId, input)
+    private fun normalizeYoutubeLink(input: String): String? {
+        val trimmed = input.trim()
+        if (!isYoutubeLink(trimmed)) return null
+        return if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) trimmed else "https://$trimmed"
     }
 
     private fun getFavorites(memberId: Snowflake): Mono<List<String>?> =
@@ -117,58 +118,79 @@ internal class Favorites {
     private fun displayFavorites(event: MessageCreateEvent, favorites: List<String>): Mono<Void> {
         val favoritesPerPage = 10
         val totalPages = (favorites.size + favoritesPerPage - 1) / favoritesPerPage
-        val currentPage = 0
+        val authorId = extractUserId(event) ?: return Mono.empty()
+        var currentPage = 0
 
-        return event.message.channel.flatMap {
-            messageService.createEmbedMessage(
-                event,
-                "Твои избранные треки (Страница ${currentPage + 1} из $totalPages)",
-                formatFavoritesPage(favorites, currentPage, favoritesPerPage)
-            ).flatMap { message ->
+        return buildFavoritesPageDescription(favorites, currentPage, favoritesPerPage)
+            .flatMap { description ->
+                messageService.createEmbedMessage(
+                    event,
+                    "Твои избранные треки (Страница ${currentPage + 1} из $totalPages)",
+                    description
+                )
+            }
+            .flatMap { message ->
                 if (totalPages > 1) {
-                    addPageControlsAndHandleReactions(event, message, totalPages, favorites, favoritesPerPage)
+                    addPageControlsAndHandleReactions(authorId, message, totalPages) { newPage ->
+                        currentPage = newPage
+                        buildFavoritesPageDescription(favorites, currentPage, favoritesPerPage)
+                            .flatMap { description ->
+                                messageService.editEmbedMessage(
+                                    message,
+                                    "Твои избранные треки (Страница ${currentPage + 1} из $totalPages)",
+                                    description
+                                )
+                            }
+                            .then(message.removeUserReactions(authorId))
+                    }
                 } else {
                     Mono.empty()
                 }
             }
-        }
     }
 
     private fun logError(error: String) {
         println(error)
     }
 
-    private fun formatFavoritesPage(favorites: List<String>, page: Int, favoritesPerPage: Int): String {
+    private fun formatFavoritesPage(favorites: List<String>, page: Int, favoritesPerPage: Int): List<String> {
         val startIndex = page * favoritesPerPage
         val endIndex = Integer.min(startIndex + favoritesPerPage, favorites.size)
         return favorites.subList(startIndex, endIndex).mapIndexed { index, favorite ->
-            "${startIndex + index + 1}. ${
-                Bot.remoteComponent.getYouTubeImpl().fetchInfo(favorite) ?: "Unknown Title"
-            }"
-        }.joinToString("\n")
+            "${startIndex + index + 1}. $favorite"
+        }
+    }
+
+    private fun buildFavoritesPageDescription(favorites: List<String>, page: Int, favoritesPerPage: Int): Mono<String> {
+        val pageLines = formatFavoritesPage(favorites, page, favoritesPerPage)
+        return Flux.fromIterable(pageLines)
+            .flatMap({ line ->
+                val link = line.substringAfter(". ").trim()
+                Mono.fromCallable { youTubeImpl.fetchInfo(link) ?: link }
+                    .subscribeOn(Schedulers.boundedElastic())
+                    .map { title -> "${line.substringBefore(". ")}. $title" }
+                    .onErrorReturn(line)
+            }, 4)
+            .collectList()
+            .map { it.joinToString("\n") }
     }
 
     private fun addPageControlsAndHandleReactions(
-        event: MessageCreateEvent,
+        authorId: Snowflake,
         message: Message,
         totalPages: Int,
-        favoritesList: List<String>,
-        favoritesPerPage: Int
+        onPageChanged: (Int) -> Mono<Void>
     ): Mono<Void> {
         var currentPage = 0
         return message.addInitialReactions()
             .then(
-                message.listenToReactions(event, totalPages) { direction ->
+                message.listenToReactions(authorId) { direction ->
                     when (direction) {
                         Direction.LEFT -> if (currentPage > 0) currentPage--
                         Direction.RIGHT -> if (currentPage < totalPages - 1) currentPage++
                         Direction.NONE -> {}
                     }
-                    messageService.editEmbedMessage(
-                        message,
-                        "Твои избранные треки (Страница ${currentPage + 1} of $totalPages)",
-                        formatFavoritesPage(favoritesList, currentPage, favoritesPerPage)
-                    ).then(message.removeUserReactions(event))
+                    onPageChanged(currentPage)
                 }
             )
     }
@@ -203,8 +225,7 @@ internal class Favorites {
 
                     else -> {
                         val link = favorites[index - 1]
-                        databaseImpl.removeFavorite(memberId, link)
-                            .then(sendMessage(event, "Трек удален успешно"))
+                        databaseImpl.removeFavorite(memberId, link).then(sendMessage(event, "Трек удален успешно")).then()
                     }
                 }
             }
@@ -217,39 +238,40 @@ internal class Favorites {
     ): Mono<Void> {
         val input = musicManager.scheduler.currentTrack?.info?.identifier
         return if (input != null && userId != null) {
-            databaseImpl.addFavorite(userId, "https://www.youtube.com/watch?v=$input")
-            sendMessage(event, "Трек добавлен в избранное")
+            val link = "https://www.youtube.com/watch?v=$input"
+            databaseImpl.addFavorite(userId, link).then(sendMessage(event, "Трек добавлен в избранное")).then()
         } else {
-            sendMessage(event, "Вы ничего не ввели")
-        }.then()
+            sendMessage(event, "Вы ничего не ввели").then()
+        }
     }
 
     private fun Message.addInitialReactions(): Mono<Void> {
         return this.addReaction(ReactionEmoji.unicode("⬅"))
             .then(this.addReaction(ReactionEmoji.unicode("➡")))
+            .onErrorResume { Mono.empty() }
     }
 
-    private fun Message.removeUserReactions(event: MessageCreateEvent): Mono<Void> {
-        return this.removeReaction(ReactionEmoji.unicode("⬅"), event.message.author.get().id)
-            .then(this.removeReaction(ReactionEmoji.unicode("➡"), event.message.author.get().id))
+    private fun Message.removeUserReactions(authorId: Snowflake): Mono<Void> {
+        return this.removeReaction(ReactionEmoji.unicode("⬅"), authorId)
+            .then(this.removeReaction(ReactionEmoji.unicode("➡"), authorId))
+            .onErrorResume { Mono.empty() }
     }
 
     private fun Message.listenToReactions(
-        event: MessageCreateEvent,
-        totalPages: Int,
+        authorId: Snowflake,
         onReaction: (Direction) -> Mono<Void>
     ): Mono<Void> {
         return this.client.eventDispatcher.on(ReactionAddEvent::class.java)
-            .filter { it.isReactionFromAuthor(event) }
-            .take(totalPages.toLong())
+            .filter { it.isReactionFromAuthor(this.id, authorId) }
+            .take(Duration.ofMinutes(10))
             .flatMap { reactionEvent ->
                 onReaction.invoke(reactionEvent.getDirection())
             }.then()
     }
 
-    private fun ReactionAddEvent.isReactionFromAuthor(event: MessageCreateEvent): Boolean {
-        return this.messageId == event.message.id &&
-                this.userId == event.message.author.get().id &&
+    private fun ReactionAddEvent.isReactionFromAuthor(messageId: Snowflake, authorId: Snowflake): Boolean {
+        return this.messageId == messageId &&
+                this.userId == authorId &&
                 this.emoji.asUnicodeEmoji().isPresent
     }
 

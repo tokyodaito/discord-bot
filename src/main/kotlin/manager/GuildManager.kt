@@ -18,6 +18,7 @@ import com.sedmelluq.discord.lavaplayer.track.playback.NonAllocatingAudioFrameBu
 import dev.lavalink.youtube.YoutubeAudioSourceManager
 import discord4j.common.util.Snowflake
 import discord4j.core.event.domain.message.MessageCreateEvent
+import java.util.concurrent.ConcurrentHashMap
 
 object GuildManager {
     val playerManager: AudioPlayerManager = DefaultAudioPlayerManager().apply {
@@ -43,7 +44,7 @@ object GuildManager {
         registerSourceManager(HttpAudioSourceManager(MediaContainerRegistry(MediaContainer.asList())))
     }
 
-    private val musicManagers: MutableMap<Snowflake, GuildMusicManager> = mutableMapOf()
+    private val musicManagers = ConcurrentHashMap<Snowflake, GuildMusicManager>()
 
     fun getGuildMusicManager(guildId: Snowflake): GuildMusicManager {
         return musicManagers.computeIfAbsent(guildId) {
@@ -51,8 +52,12 @@ object GuildManager {
         }
     }
 
-    fun getGuildMusicManager(event: MessageCreateEvent): GuildMusicManager {
-        val guildId = event.guildId.orElse(null)
+    fun getGuildMusicManager(event: MessageCreateEvent): GuildMusicManager? {
+        val guildId = event.guildId.orElse(null) ?: return null
         return getGuildMusicManager(guildId)
+    }
+
+    fun removeGuildMusicManager(guildId: Snowflake) {
+        musicManagers.remove(guildId)?.dispose()
     }
 }

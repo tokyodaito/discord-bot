@@ -15,7 +15,7 @@ import java.util.*
 
 class VoiceChannelService {
     fun join(event: MessageCreateEvent): Mono<VoiceChannel> {
-        val musicManager = GuildManager.getGuildMusicManager(event)
+        val musicManager = GuildManager.getGuildMusicManager(event) ?: return Mono.empty()
 
         return Mono.justOrEmpty(event.member)
             .flatMap { it.voiceState }
@@ -36,14 +36,16 @@ class VoiceChannelService {
 
 
     fun disconnect(event: MessageCreateEvent): Mono<Void> {
-        val musicManager = GuildManager.getGuildMusicManager(event)
+        val guildId = event.guildId.orElse(null) ?: return Mono.empty()
+        val musicManager = GuildManager.getGuildMusicManager(guildId)
 
-        return getMemberVoiceState(event)
-            .flatMap { voiceState ->
-                musicManager.player.removeListener(musicManager.scheduler)
-                voiceState.channel.flatMap { channel ->
-                    channel.sendDisconnectVoiceState()
-                }
+        return event.client.self
+            .flatMap { self -> self.asMember(guildId) }
+            .flatMap { member -> member.voiceState }
+            .flatMap { voiceState -> voiceState.channel }
+            .flatMap { channel ->
+                musicManager.detachSchedulerListener()
+                channel.sendDisconnectVoiceState()
             }
             .retryWhen(Retry.backoff(4, Duration.ofSeconds(5)))
             .onErrorResume(logError("Error in disconnect"))

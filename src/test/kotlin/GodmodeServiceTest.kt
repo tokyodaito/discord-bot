@@ -7,6 +7,7 @@ import manager.GuildManager
 import manager.GuildMusicManager
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import reactor.core.publisher.Mono
 import service.GodmodeService
 import service.MessageService
 import service.VoiceChannelService
@@ -34,6 +35,8 @@ class GodmodeServiceTest {
         field.isAccessible = true
         field.set(null, serviceComponent)
 
+        every { messageService.sendMessage(any(), any()) } returns Mono.empty()
+
         every { event.message } returns message
         every { message.author } returns Optional.of(user)
         every { user.id.asString() } returns GodmodeService.godModeUserId
@@ -48,7 +51,7 @@ class GodmodeServiceTest {
         mockkObject(GuildManager)
         every { GuildManager.getGuildMusicManager(event) } returns musicManager
 
-        service.setGodmodeStatus(event, true)
+        service.setGodmodeStatus(event, true).block()
 
         verify { musicManager.godMode = true }
         verify { messageService.sendMessage(event, "godmode enabled") }
@@ -59,14 +62,14 @@ class GodmodeServiceTest {
     fun `not authorized user denied`() {
         every { user.id.asString() } returns "other"
 
-        service.setGodmodeStatus(event, true)
+        service.setGodmodeStatus(event, true).block()
 
         verify { messageService.sendMessage(event, match { it.contains("tenor") }) }
     }
 
     @Test
     fun `sendMessageFromUser sends content`() {
-        service.sendMessageFromUser(event)
+        service.sendMessageFromUser(event).block()
 
         verify { messageService.sendMessage(event, "hello") }
     }
